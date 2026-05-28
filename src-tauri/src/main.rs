@@ -51,9 +51,53 @@ async fn leer_archivo_local(ruta: String) -> Result<String, String> {
     }
 }
 
+use tauri::command;
+use reqwest::Client;
+
+// Definimos el comando asíncrono que Vue podrá llamar
+#[command]
+async fn obtener_modelos_rust() -> Result<String, String> {
+    // Rust crea un cliente HTTP nativo (ignora el CORS por completo)
+    let client = Client::new();
+    
+    // Hacemos la petición directamente a la IP local de Ollama
+    let res = client.get("http://127.0.0.1:11434/api/tags")
+        .send()
+        .await
+        .map_err(|err| format!("Fallo al contactar Ollama: {}", err))?;
+
+    // Extraemos el texto JSON en crudo
+    let texto_json = res.text().await.map_err(|err| format!("Fallo al leer respuesta: {}", err))?;
+    
+    Ok(texto_json)
+}
+
+#[command]
+async fn enviar_chat_rust(model: String, messages: Vec<serde_json::Value>) -> Result<serde_json::Value, String> {
+    let client = Client::new();
+    let body = serde_json::json!({
+        "model": model,
+        "messages": messages,
+        "stream": false
+    });
+
+    let res = client.post("http://127.0.0.1:11434/api/chat")
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let json_response: serde_json::Value = res.json().await.map_err(|e| e.to_string())?;
+    
+    // Devolvemos el JSON completo para que Vue pueda extraer el mensaje Y las métricas
+    Ok(json_response)
+}
+
 fn main() {
     tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![ejecutar_powershell, leer_archivo_local])
+        .invoke_handler(tauri::generate_handler![ejecutar_powershell, leer_archivo_local, obtener_modelos_rust, enviar_chat_rust])
         .run(tauri::generate_context!())
         .expect("Error crítico al iniciar Ainz Core");
 }
+
+

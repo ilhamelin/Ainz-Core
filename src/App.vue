@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from "vue";
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from '@tauri-apps/api/core';
+
 
 // ==========================================
 // 1. ESTADO REACTIVO Y CONTEXTO
@@ -9,8 +10,8 @@ const inputUsuario = ref("");
 const estaPensando = ref(false);
 const directorioActual = ref("C:\\IA");
 
-const modelosDisponibles = ref<string[]>([]);
-const modeloSeleccionado = ref("");
+const modelos = ref<string[]>([]);
+const modeloSeleccionado = ref<string>("");
 
 const nombreArchivoActual = ref("");
 const contenidoArchivoActual = ref("");
@@ -214,101 +215,60 @@ let memoriaIA = [{ role: "system", content: SYSTEM_PROMPT }];
 async function procesarRespuestaIA() {
   estaPensando.value = true;
   try {
-    const respuesta = await fetch("http://localhost:11434/api/chat", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model: modeloSeleccionado.value,
-        messages: memoriaIA,
-        stream: true // 1. ACTIVAMOS EL STREAMING DE TOKENS
-      })
+    // 1. INVOCACIÓN AL PUENTE DE RUST (Recibe el objeto completo de Ollama)
+    const respuestaFull: any = await invoke("enviar_chat_rust", { 
+      model: modeloSeleccionado.value, 
+      messages: memoriaIA 
     });
 
-    if (!respuesta.ok || !respuesta.body) throw new Error("Fallo de conexión o body vacío.");
+    // Extraemos los datos del JSON que devuelve Ollama
+    const contenidoIA = respuestaFull.message?.content || "";
+    const pTokens = respuestaFull.prompt_eval_count || 0;
+    const rTokens = respuestaFull.eval_count || 0;
+    const tDuration = respuestaFull.total_duration || 0;
+    const eDuration = respuestaFull.eval_duration || 0;
 
-    // 2. PREPARAMOS EL LECTOR DEL FLUJO (STREAM)
-    const reader = respuesta.body.getReader();
-    const decoder = new TextDecoder("utf-8");
-    let textoIARaw = "";
-    let pTokens = 0, rTokens = 0, tDuration = 0, eDuration = 0;
-
-    // 3. CREAMOS EL MENSAJE EN LA UI PARA DIBUJAR EN TIEMPO REAL
+    // 2. PREPARAMOS EL MENSAJE
     const indiceActual = historial.value.length;
     historial.value.push({
       role: "AINZ CORE",
-      content: "...",
-      isStreaming: true,
-      color: "#a78bfa"
+      content: contenidoIA, 
+      color: "#a78bfa",
+      isStreaming: false
     });
 
-    // 4. LEEMOS EL FLUJO LETRA POR LETRA
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
+    memoriaIA.push({ role: "assistant", content: contenidoIA });
 
-      const chunk = decoder.decode(value, { stream: true });
-      const lineas = chunk.split('\n').filter(linea => linea.trim() !== '');
-
-      for (const linea of lineas) {
-        try {
-          const datos = JSON.parse(linea);
-          if (datos.message?.content) {
-            textoIARaw += datos.message.content;
-            historial.value[indiceActual].content = textoIARaw; // Actualización en vivo
-          }
-
-          if (datos.done) {
-            pTokens = datos.prompt_eval_count || 0;
-            rTokens = datos.eval_count || 0;
-            tDuration = datos.total_duration || 0;
-            eDuration = datos.eval_duration || 0;
-          }
-        } catch (e) { /* Ignorar trozos de JSON cortados en el stream */ }
-      }
-    }
-
-    // 5. GUARDAMOS EL STRING COMPLETO EN LA MEMORIA REAL
-    memoriaIA.push({ role: "assistant", content: textoIARaw });
-
-    // 6. CÁLCULO DE MÉTRICAS (Acumuladas)
+    // 3. ACTUALIZACIÓN DE MÉTRICAS (Basado en datos reales de Ollama)
     const acumuladoPromptPrevio = metricasActuales.value ? metricasActuales.value.promptAcumulados : 0;
     const acumuladoResponsePrevio = metricasActuales.value ? metricasActuales.value.responseAcumulados : 0;
-    const nuevoPromptAcumulado = acumuladoPromptPrevio + pTokens;
-    const nuevoResponseAcumulado = acumuladoResponsePrevio + rTokens;
-
+    
     metricasActuales.value = {
-      promptTokens: pTokens, responseTokens: rTokens, totalTokens: pTokens + rTokens,
+      promptTokens: pTokens,
+      responseTokens: rTokens,
+      totalTokens: pTokens + rTokens,
       velocidad: eDuration > 0 ? ((rTokens / eDuration) * 1e9).toFixed(1) : "0.0",
       tiempoTotal: (tDuration / 1e9).toFixed(2),
-      promptAcumulados: nuevoPromptAcumulado, responseAcumulados: nuevoResponseAcumulado,
-      totalAcumulados: nuevoPromptAcumulado + nuevoResponseAcumulado
+      promptAcumulados: acumuladoPromptPrevio + pTokens,
+      responseAcumulados: acumuladoResponsePrevio + rTokens,
+      totalAcumulados: (acumuladoPromptPrevio + pTokens) + (acumuladoResponsePrevio + rTokens)
     };
-    guardarEnLocalStorage();
 
-    // 7. EXTRACCIÓN Y PARSEO DEL JSON (Nuestra arquitectura)
+    // 4. LÓGICA DE PARSEO JSON (Adaptada al nuevo contenido)
     let jsonIA;
     let textoHuerfano = "";
     let jsonRoto = false;
 
     try {
-      const jsonMatch = textoIARaw.match(/\{[\s\S]*\}/);
+      const jsonMatch = contenidoIA.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
         jsonIA = JSON.parse(jsonMatch[0]);
-        textoHuerfano = textoIARaw.replace(jsonMatch[0], '').trim();
-        textoHuerfano = textoHuerfano.replace(/```json/gi, "");
-        if (textoHuerfano.trim().startsWith("```") && !textoHuerfano.trim().match(/^```[a-z]+/i)) {
-          textoHuerfano = textoHuerfano.trim().replace(/^```/, "");
-        }
-        textoHuerfano = textoHuerfano.trim();
+        textoHuerfano = contenidoIA.replace(jsonMatch[0], '').trim();
+        textoHuerfano = textoHuerfano.replace(/```json/gi, "").trim();
       } else throw new Error("No JSON");
     } catch (e) {
-      jsonRoto = true; // SE ACTIVA LA CICATRIZ VISUAL, NO EL TEXTO CRUDO
-      let textoLimpio = textoIARaw.trim();
-      if (textoLimpio.startsWith("```json")) {
-        textoLimpio = textoLimpio.substring(7);
-        if (textoLimpio.endsWith("```")) textoLimpio = textoLimpio.slice(0, -3);
-      }
-      jsonIA = { mensaje_ia: textoLimpio.trim(), comandos_powershell: [], leer_archivo: "" };
+      jsonRoto = true;
+      jsonIA = { mensaje_ia: contenidoIA.trim(), comandos_powershell: [], leer_archivo: "" };
     }
 
     let textoAnalisis = jsonIA.mensaje_ia || "";
@@ -323,19 +283,24 @@ async function procesarRespuestaIA() {
       }
     }
 
-    // 8. SWAP: REEMPLAZAMOS EL MENSAJE STREAMING POR EL DISEÑO FINAL Y ESTRUCTURADO
     historial.value[indiceActual] = {
       role: "AINZ CORE",
       content: textoAnalisis,
       comandos: jsonIA.comandos_powershell || [],
       archivo_a_leer: jsonIA.leer_archivo || null,
       color: "#a78bfa",
-      json_roto: jsonRoto, // Pasamos la cicatriz a la UI
+      json_roto: jsonRoto,
       isStreaming: false
     };
 
-  } catch (error) {
-    historial.value.push({ role: "SISTEMA", content: `Error crítico: ${error}`, color: "#ef4444" });
+    guardarEnLocalStorage();
+
+  } catch (error: any) {
+    historial.value.push({
+      role: "SISTEMA",
+      content: `Error en el puente de Rust: ${error.message || String(error)}`,
+      color: "#ef4444"
+    });
   } finally {
     estaPensando.value = false;
   }
@@ -400,18 +365,31 @@ async function ejecutarLecturaArchivo(ruta: string, indexMensaje: number) {
   }
 }
 
-async function obtenerModelos() {
+const obtenerModelos = async () => {
   try {
-    const respuesta = await fetch("http://127.0.0.1:11434/api/tags");
-    const data = await respuesta.json();
-    modelosDisponibles.value = data.models.map((m: any) => m.name);
-    if (modelosDisponibles.value.length > 0) {
-      modeloSeleccionado.value = modelosDisponibles.value[0];
+    // En lugar de fetch, invocamos al comando de Rust
+    const respuestaCruda: string = await invoke("obtener_modelos_rust");
+    
+    // Parseamos el JSON que Rust nos trajo de contrabando
+    const datos = JSON.parse(respuestaCruda);
+    modelos.value = datos.models.map((m: any) => m.name);
+    
+    if (modelos.value.length > 0) {
+      modeloSeleccionado.value = modelos.value[0];
     }
-  } catch (e) {
-    console.error("Error conectando con Ollama:", e);
+  } catch (error) {
+    console.error("Rust reporta que Ollama no responde:", error);
+    
+    modelos.value = ["⚠️ Ollama Desconectado"];
+    modeloSeleccionado.value = "⚠️ Ollama Desconectado";
+    
+    historial.value.push({
+      role: "SISTEMA",
+      content: "❌ Motor de IA inalcanzable. Rust no pudo encontrar el servicio de Ollama en el puerto 11434.",
+      color: "#ef4444"
+    });
   }
-}
+};
 
 onMounted(() => {
   obtenerModelos();
@@ -459,7 +437,6 @@ const expulsarArchivoMemoria = () => {
   if (!nombreArchivoActual.value) return;
   const nombre = nombreArchivoActual.value;
 
-  // Filtramos y destruimos cualquier prompt de la memoria que contenga el nombre del archivo
   memoriaIA = memoriaIA.filter(m => !m.content.includes(`[${nombre}]`));
 
   historial.value.push({
@@ -468,7 +445,7 @@ const expulsarArchivoMemoria = () => {
     color: "#f7768e"
   });
 
-  limpiarArchivoActual(); // Limpia la UI
+  limpiarArchivoActual(); 
 };
 
 
@@ -866,8 +843,8 @@ const copiarAlPortapapeles = async (codigo: string, evento: any) => {
       </div>
 
       <div class="model-selector" data-tauri-drag-region>
-        <select v-model="modeloSeleccionado" class="model-dropdown">
-          <option v-for="modelo in modelosDisponibles" :key="modelo" :value="modelo">
+        <select v-model="modeloSeleccionado" class="oc-select">
+          <option v-for="modelo in modelos" :key="modelo" :value="modelo">
             {{ modelo }}
           </option>
         </select>
