@@ -1413,7 +1413,7 @@ const hacerScrollHaciaAbajo = async (forzar = false) => {
                 </div>
                 <div>
                   <h3 style="color: var(--text-main); margin: 0;">Ainz Core</h3>
-                  <p style="color: var(--text-muted); margin: 5px 0;">Versión 1.0.0</p>
+                  <p style="color: var(--text-muted); margin: 5px 0;">Versión 0.1.1</p>
                   <p style="color: var(--text-muted); font-size: 12px; line-height: 1.5;">
                     Agente local autónomo especializado en Windows.<br>
                     Impulsado por Tauri v2 y modelos de lenguaje locales.
