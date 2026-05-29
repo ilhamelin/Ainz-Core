@@ -1379,7 +1379,7 @@ const hacerScrollHaciaAbajo = async (forzar = false) => {
                     'conectando': estadoActualizacion === 'buscando' || estadoActualizacion === 'actualizando'
                   }"></span>
                   <span class="status-text">
-                    <template v-if="estadoActualizacion === 'inactivo'">Sistema listo</template>
+                    <template v-if="estadoActualizacion === 'inactivo'">Sistema Operativo</template>
                     <template v-else-if="estadoActualizacion === 'buscando'">Buscando en los servidores...</template>
                     <template v-else-if="estadoActualizacion === 'disponible'">¡Versión {{ versionNueva }}
                       disponible!</template>
