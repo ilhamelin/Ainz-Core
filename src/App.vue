@@ -2,14 +2,41 @@
 import { ref, onMounted, nextTick } from "vue";
 import { invoke } from '@tauri-apps/api/core';
 
-
-
 import { check, type Update } from '@tauri-apps/plugin-updater';
 import { relaunch } from '@tauri-apps/plugin-process';
 
+
+// ==========================================
+// Tipografía Dinámica y Personalización de Fuentes
+// ==========================================
+
+interface Fuente {
+  nombre: string;
+  valor: string;
+}
+
+const fuentesDisponibles: Fuente[] = [
+  { nombre: 'Inter', valor: 'Inter, sans-serif' },
+  { nombre: 'JetBrains Mono', valor: '"JetBrains Mono", monospace' },
+  { nombre: 'Roboto', valor: 'Roboto, sans-serif' },
+  { nombre: 'Open Sans', valor: '"Open Sans", sans-serif' }
+];
+
+const fuenteSeleccionada = ref('Inter, sans-serif');
+
+const cambiarFuente = (nuevaFuente: string): void => {
+  fuenteSeleccionada.value = nuevaFuente;
+  document.documentElement.style.setProperty('--font-family-main', nuevaFuente);
+};
+
+// ==========================================
+
+// ==========================================
+// MECANISMO DE ACTUALIZACIONES AUTOMÁTICAS
+// ==========================================
+
 const estadoActualizacion = ref<'inactivo' | 'buscando' | 'disponible' | 'actualizando' | 'actualizado' | 'error'>('inactivo');
 const versionNueva = ref("");
-
 
 let actualizacionPendiente: Update | null = null;
 
@@ -50,6 +77,8 @@ const aplicarActualizacion = async () => {
 };
 
 // ==========================================
+
+// ==========================================
 // 1. ESTADO REACTIVO Y CONTEXTO
 // ==========================================
 const inputUsuario = ref("");
@@ -65,7 +94,6 @@ const mostrarModalArchivo = ref(false);
 const mostrarConfiguracion = ref(false);
 const tabActivaConfig = ref<'apariencia' | 'motor' | 'actualizaciones' | 'acerca'>('apariencia');
 
-// Estado de salud del servidor Ollama
 const estadoConexion = ref<'conectando' | 'conectado' | 'desconectado'>('conectando');
 
 const viewportRef = ref<HTMLElement | null>(null);
@@ -1009,9 +1037,7 @@ const ajustarAltura = () => {
   const el = textareaRef.value;
   if (!el) return;
 
-  // 1. Resetear la altura a 'auto' para que pueda encogerse si borras texto
   el.style.height = 'auto';
-  // 2. Asignar la altura real del contenido (scrollHeight)
   el.style.height = `${el.scrollHeight}px`;
 };
 
@@ -1022,20 +1048,16 @@ const verificarPosicionScroll = () => {
   const el = viewportRef.value;
   if (!el) return;
 
-  // Si la distancia desde el fondo es mayor a 100px, asumimos que el usuario subió a leer
   const distanciaAlFondo = el.scrollHeight - el.scrollTop - el.clientHeight;
   usuarioSubioScroll.value = distanciaAlFondo > 100;
 };
 
 const hacerScrollHaciaAbajo = async (forzar = false) => {
-  // Esperamos a que Vue renderice el nuevo mensaje en el DOM
   await nextTick();
 
   const el = viewportRef.value;
   if (!el) return;
 
-  // Hacemos scroll SI se fuerza (ej. cuando el usuario envía un mensaje) 
-  // O SI el usuario no había subido a leer otra cosa.
   if (forzar || !usuarioSubioScroll.value) {
     el.scrollTo({
       top: el.scrollHeight,
@@ -1046,12 +1068,10 @@ const hacerScrollHaciaAbajo = async (forzar = false) => {
 
 import { getVersion } from '@tauri-apps/api/app';
 
-// Variable reactiva para guardar la versión
 const appVersion = ref('Cargando...');
 
 onMounted(async () => {
   try {
-    // Le pedimos a Rust la versión oficial del tauri.conf.json
     appVersion.value = await getVersion();
   } catch (error) {
     console.error("Error al leer la versión de Tauri:", error);
@@ -1059,9 +1079,10 @@ onMounted(async () => {
   }
 });
 
+
+
+
 </script>
-
-
 <template>
   <div class="opencode-app" :class="temaActual">
     <header class="oc-header" data-tauri-drag-region>
@@ -1360,6 +1381,20 @@ onMounted(async () => {
                   <span v-if="temaActual === tema.id" class="theme-active-icon">✓</span>
                 </div>
               </div>
+
+              <div style="margin-top: 30px;">
+                <h4 class="settings-title">Tipografía</h4>
+                <p class="settings-desc">Elige la fuente que mejor se adapte a tu lectura.</p>
+
+                <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-top: 15px;">
+                  <div v-for="fuente in fuentesDisponibles" :key="fuente.nombre" @click="cambiarFuente(fuente.valor)"
+                    class="theme-card" :class="{ 'selected': fuenteSeleccionada === fuente.valor }"
+                    :style="{ fontFamily: fuente.valor }">
+                    {{ fuente.nombre }}
+                  </div>
+                </div>
+              </div>
+
             </div>
 
             <div v-if="tabActivaConfig === 'motor'" class="settings-view">
@@ -1465,6 +1500,21 @@ onMounted(async () => {
   margin: 0;
   padding: 0;
   box-sizing: border-box;
+
+  font-family: var(--font-family-main) !important;
+}
+
+:root {
+  --font-family-main: 'Inter', sans-serif;
+}
+
+body, #app {
+  font-family: var(--font-family-main) !important;
+}
+
+/* Esto asegura que todos los elementos internos se "rindan" ante la variable */
+.settings-view * {
+  font-family: var(--font-family-main) !important;
 }
 
 html,
@@ -1475,6 +1525,7 @@ body {
   width: 100vw;
   overflow: hidden !important;
   background-color: var(--bg-app) !important;
+  transition: font-family 0.3s ease;
 }
 
 ::-webkit-scrollbar {
@@ -1538,7 +1589,6 @@ body {
   height: 100vh;
   background-color: var(--bg-app);
   color: #a9b1d6;
-  font-family: 'JetBrains Mono', Consolas, monospace;
   font-size: 14px;
   overflow: hidden;
 }
@@ -1939,7 +1989,6 @@ body {
 .oc-modal-body pre {
   margin: 0;
   color: var(--text-main);
-  font-family: 'JetBrains Mono', Consolas, monospace;
   font-size: 13px;
   white-space: pre-wrap;
   word-break: break-all;
@@ -2287,7 +2336,6 @@ body {
 }
 
 .oc-code-block code {
-  font-family: 'JetBrains Mono', Consolas, monospace;
   font-size: 13px;
   line-height: 1.5;
   color: #e0e0e0;
@@ -2361,7 +2409,6 @@ body {
 .oc-user-text {
   white-space: pre-wrap;
   word-break: break-word;
-  font-family: 'JetBrains Mono', Consolas, monospace;
   line-height: 1.5;
   color: var(--accent-primary);
 }
@@ -2631,4 +2678,24 @@ body {
     opacity: 0.7;
   }
 }
+
+.theme-card {
+  padding: 15px;
+  background: var(--bg-header);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  cursor: pointer;
+  text-align: center;
+  transition: all 0.2s;
+}
+
+.theme-card:hover {
+  border-color: var(--accent-primary);
+}
+
+.theme-card.selected {
+  border-color: var(--accent-primary);
+  background: rgba(100, 149, 237, 0.1);
+}
+
 </style>
