@@ -24,6 +24,15 @@
       "csp": null
     }
   },
+  "plugins": {
+    "updater": {
+      "endpoints": [
+        "https://ilhamelin.github.io/Ainz-Core/updater.json"
+      ],
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IHJzaWduIGVuY3J5cHRlZCBzZWNyZXQga2V5ClJXUlRZMEl5MXZFOEdCWHcvQXA0d0RaMEwxd0lOTmd3Ny91VklNMFBHT3pIa201ZG5Lb0FBQkFBQUFBQUFBQUFBQUlBQUFBQTN2b0hRNWF6WjN3UDlGQjJWLzhqaFd0MzBSem93YzkwNEltK1BtdDZkNytQWjhEajN3alh2a29sU2lCbWxFNHYydmF2Q211VlZWREVMVUxMSlVZcEtKUUZ5TE5qeFY1V1BkQ3c5YTNicXdJcGd2Tk5qa1RPdXpkZnN3WFNISHNTOHNEQlhyTTFLdG89Cg==",
+      "dialog": true
+    }
+  },
   "bundle": {
     "publisher": "Meridian Core",
     "active": true,
@@ -35,5 +44,6 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ]
+    
   }
 }

@@ -3,6 +3,52 @@ import { ref, onMounted, nextTick } from "vue";
 import { invoke } from '@tauri-apps/api/core';
 
 
+
+import { check, type Update } from '@tauri-apps/plugin-updater';
+import { relaunch } from '@tauri-apps/plugin-process';
+
+const estadoActualizacion = ref<'inactivo' | 'buscando' | 'disponible' | 'actualizando' | 'actualizado' | 'error'>('inactivo');
+const versionNueva = ref("");
+
+
+let actualizacionPendiente: Update | null = null;
+
+const verificarActualizaciones = async () => {
+  estadoActualizacion.value = 'buscando';
+  try {
+    const update = await check();
+
+    if (update) {
+      actualizacionPendiente = update;
+      versionNueva.value = update.version || "Desconocida";
+      estadoActualizacion.value = 'disponible';
+    } else {
+      actualizacionPendiente = null;
+      estadoActualizacion.value = 'actualizado';
+      setTimeout(() => estadoActualizacion.value = 'inactivo', 3000);
+    }
+  } catch (error) {
+    console.error("Fallo al contactar el servidor de actualizaciones:", error);
+    estadoActualizacion.value = 'error';
+    setTimeout(() => estadoActualizacion.value = 'inactivo', 5000);
+  }
+};
+
+const aplicarActualizacion = async () => {
+  if (!actualizacionPendiente) return;
+
+  estadoActualizacion.value = 'actualizando';
+  try {
+    await actualizacionPendiente.downloadAndInstall();
+
+    await relaunch();
+  } catch (error) {
+    console.error("Error crítico durante la instalación:", error);
+    estadoActualizacion.value = 'error';
+    setTimeout(() => estadoActualizacion.value = 'inactivo', 5000);
+  }
+};
+
 // ==========================================
 // 1. ESTADO REACTIVO Y CONTEXTO
 // ==========================================
@@ -17,6 +63,7 @@ const nombreArchivoActual = ref("");
 const contenidoArchivoActual = ref("");
 const mostrarModalArchivo = ref(false);
 const mostrarConfiguracion = ref(false);
+const tabActivaConfig = ref<'apariencia' | 'motor' | 'actualizaciones' | 'acerca'>('apariencia');
 
 // Estado de salud del servidor Ollama
 const estadoConexion = ref<'conectando' | 'conectado' | 'desconectado'>('conectando');
@@ -1266,61 +1313,116 @@ const hacerScrollHaciaAbajo = async (forzar = false) => {
           <h3>⚙️ Configuraciones de Ainz Core</h3>
           <button class="oc-btn-close" @click="mostrarConfiguracion = false">X</button>
         </div>
-        <div class="oc-modal-body">
 
-          <div class="settings-section">
-            <h4 class="settings-title">Apariencia y Temas</h4>
-            <p class="settings-desc">Selecciona la paleta de colores para la interfaz de la aplicación.</p>
+        <div class="settings-layout">
 
-            <div class="theme-grid">
-              <div v-for="tema in temasDisponibles" :key="tema.id" class="theme-card"
-                :class="{ active: temaActual === tema.id }" @click="cambiarTema(tema.id)">
-                <div class="theme-color-preview" :style="{ backgroundColor: tema.color }"></div>
-                <span class="theme-name">{{ tema.nombre }}</span>
-                <span v-if="temaActual === tema.id" class="theme-active-icon">✓</span>
+          <aside class="settings-sidebar">
+            <button :class="{ active: tabActivaConfig === 'apariencia' }" @click="tabActivaConfig = 'apariencia'">
+              🎨 Apariencia
+            </button>
+            <button :class="{ active: tabActivaConfig === 'motor' }" @click="tabActivaConfig = 'motor'">
+              🧠 Motor IA
+            </button>
+            <button :class="{ active: tabActivaConfig === 'actualizaciones' }"
+              @click="tabActivaConfig = 'actualizaciones'">
+              🔄 Actualizaciones
+            </button>
+            <button :class="{ active: tabActivaConfig === 'acerca' }" @click="tabActivaConfig = 'acerca'">
+              ℹ️ Acerca de...
+            </button>
+          </aside>
+
+          <main class="settings-content">
+
+            <div v-if="tabActivaConfig === 'apariencia'" class="settings-view">
+              <h4 class="settings-title">Apariencia y Temas</h4>
+              <p class="settings-desc">Selecciona la paleta de colores para la interfaz de la aplicación.</p>
+              <div class="theme-grid">
+                <div v-for="tema in temasDisponibles" :key="tema.id" class="theme-card"
+                  :class="{ active: temaActual === tema.id }" @click="cambiarTema(tema.id)">
+                  <div class="theme-color-preview" :style="{ backgroundColor: tema.color }"></div>
+                  <span class="theme-name">{{ tema.nombre }}</span>
+                  <span v-if="temaActual === tema.id" class="theme-active-icon">✓</span>
+                </div>
               </div>
             </div>
 
-            <h4 class="settings-title">Motor de Inteligencia Artificial</h4>
-            <p class="settings-desc">Gestiona la conexión con tu servidor local de Ollama.</p>
-
-            <div class="connection-card">
-              <div class="connection-status">
-                <span class="status-dot" :class="estadoConexion"></span>
-                <span class="status-text">
-                  {{
-                    estadoConexion === 'conectado' ? 'Conectado y escuchando' :
-                      estadoConexion === 'desconectado' ? 'Servidor Inalcanzable' :
-                        'Estableciendo conexión...'
-                  }}
-                </span>
+            <div v-if="tabActivaConfig === 'motor'" class="settings-view">
+              <h4 class="settings-title">Motor de Inteligencia Artificial</h4>
+              <p class="settings-desc">Gestiona la conexión con tu servidor local de Ollama.</p>
+              <div class="connection-card">
+                <div class="connection-status">
+                  <span class="status-dot" :class="estadoConexion"></span>
+                  <span class="status-text">
+                    {{
+                      estadoConexion === 'conectado' ? 'Conectado y escuchando' :
+                        estadoConexion === 'desconectado' ? 'Servidor Inalcanzable' :
+                          'Estableciendo conexión...'
+                    }}
+                  </span>
+                </div>
+                <button class="oc-btn-settings-action" @click="reconectarOllama"
+                  :disabled="estadoConexion === 'conectando'">
+                  Reconectar
+                </button>
               </div>
-
-              <button class="oc-btn-settings-action" @click="reconectarOllama"
-                :disabled="estadoConexion === 'conectando'">
-                <svg v-if="estadoConexion === 'conectando'" class="icon-spin" viewBox="0 0 24 24" fill="none"
-                  stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16"
-                  height="16">
-                  <line x1="12" y1="2" x2="12" y2="6"></line>
-                  <line x1="12" y1="18" x2="12" y2="22"></line>
-                  <line x1="4.93" y1="4.93" x2="7.76" y2="7.76"></line>
-                  <line x1="16.24" y1="16.24" x2="19.07" y2="19.07"></line>
-                  <line x1="2" y1="12" x2="6" y2="12"></line>
-                  <line x1="18" y1="12" x2="22" y2="12"></line>
-                  <line x1="4.93" y1="19.07" x2="7.76" y2="16.24"></line>
-                  <line x1="16.24" y1="7.76" x2="19.07" y2="4.93"></line>
-                </svg>
-                <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                  stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
-                  <polyline points="23 4 23 10 17 10"></polyline>
-                  <polyline points="1 20 1 14 7 14"></polyline>
-                  <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
-                </svg>
-                Reconectar
-              </button>
             </div>
-          </div>
 
+            <div v-if="tabActivaConfig === 'actualizaciones'" class="settings-view">
+              <h4 class="settings-title">Actualizaciones del Sistema</h4>
+              <p class="settings-desc">Verifica si hay nuevas versiones de Ainz Core disponibles.</p>
+              <div class="connection-card">
+                <div class="connection-status">
+                  <span class="status-dot" :class="{
+                    'conectado': estadoActualizacion === 'actualizado',
+                    'desconectado': estadoActualizacion === 'error',
+                    'conectando': estadoActualizacion === 'buscando' || estadoActualizacion === 'actualizando'
+                  }"></span>
+                  <span class="status-text">
+                    <template v-if="estadoActualizacion === 'inactivo'">Sistema listo</template>
+                    <template v-else-if="estadoActualizacion === 'buscando'">Buscando en los servidores...</template>
+                    <template v-else-if="estadoActualizacion === 'disponible'">¡Versión {{ versionNueva }}
+                      disponible!</template>
+                    <template v-else-if="estadoActualizacion === 'actualizando'">Instalando actualización...</template>
+                    <template v-else-if="estadoActualizacion === 'actualizado'">Cuentas con la versión más
+                      reciente.</template>
+                    <template v-else-if="estadoActualizacion === 'error'">Error al contactar el servidor.</template>
+                  </span>
+                </div>
+                <div style="display: flex; gap: 10px;">
+                  <button
+                    v-if="estadoActualizacion === 'inactivo' || estadoActualizacion === 'actualizado' || estadoActualizacion === 'error'"
+                    class="oc-btn-settings-action" @click="verificarActualizaciones">
+                    Buscar
+                  </button>
+                  <button v-if="estadoActualizacion === 'disponible'" class="oc-btn-settings-action"
+                    style="background-color: var(--accent-primary); color: #14151a; font-weight: bold; border: none;"
+                    @click="aplicarActualizacion">
+                    Actualizar y Reiniciar
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div v-if="tabActivaConfig === 'acerca'" class="settings-view">
+              <h4 class="settings-title">Acerca de Ainz Core</h4>
+              <div style="display: flex; gap: 20px; align-items: center; margin-top: 15px;">
+                <div
+                  style="width: 80px; height: 80px; background: var(--bg-header); border-radius: 12px; display: flex; justify-content: center; align-items: center; border: 1px solid var(--accent-primary);">
+                  <span style="font-size: 32px;">⚡</span>
+                </div>
+                <div>
+                  <h3 style="color: var(--text-main); margin: 0;">Ainz Core</h3>
+                  <p style="color: var(--text-muted); margin: 5px 0;">Versión 1.0.0</p>
+                  <p style="color: var(--text-muted); font-size: 12px; line-height: 1.5;">
+                    Agente local autónomo especializado en Windows.<br>
+                    Impulsado por Tauri v2 y modelos de lenguaje locales.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+          </main>
         </div>
       </div>
     </div>
@@ -1364,10 +1466,9 @@ body {
   display: none;
   width: 0px;
   background: transparent;
-  /* Cooperamos con la transparencia */
+
 }
 
-/* 1. TOKYO NIGHT (Tu diseño original / Por defecto) */
 .opencode-app.theme-tokyo {
   --bg-app: var(--bg-app);
   --bg-header: var(--bg-header);
@@ -1379,7 +1480,7 @@ body {
   --accent-primary: var(--accent-primary);
 }
 
-/* 2. DRÁCULA (Colores vibrantes oscuros) */
+
 .opencode-app.theme-dracula {
   --bg-app: #282a36;
   --bg-header: #21222c;
@@ -1391,7 +1492,7 @@ body {
   --accent-primary: #bd93f9;
 }
 
-/* 3. GRUVBOX DARK (Tonos cálidos y retro) */
+
 .opencode-app.theme-gruvbox {
   --bg-app: #282828;
   --bg-header: #3c3836;
@@ -1403,7 +1504,7 @@ body {
   --accent-primary: #fabd2f;
 }
 
-/* 4. NORD (Tonos fríos y árticos) */
+
 .opencode-app.theme-nord {
   --bg-app: #2e3440;
   --bg-header: #3b4252;
@@ -1526,7 +1627,6 @@ body {
 .oc-result-block pre {
   margin: 0;
   color: #9ece6a;
-  /* Verde terminal */
   white-space: pre-wrap;
   word-break: break-all;
   max-height: 300px;
@@ -1772,8 +1872,8 @@ body {
 }
 
 .oc-modal {
-  background-color: var(--bg-header);
-  border: 1px solid #3b4261;
+  background-color: var(--bg-app);
+  border: 1px solid var(--border-color);
   border-radius: 8px;
   width: 80%;
   max-width: 900px;
@@ -1789,7 +1889,7 @@ body {
   align-items: center;
   padding: 12px 20px;
   border-bottom: 1px solid var(--border-color);
-  background-color: var(--bg-app);
+  background-color: var(--bg-header);
   border-radius: 8px 8px 0 0;
 }
 
@@ -1814,8 +1914,11 @@ body {
 
 .oc-modal-body {
   flex: 1;
-  padding: 20px;
+  padding: 24px;
   overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
 }
 
 .oc-modal-body pre {
@@ -2242,14 +2345,10 @@ body {
 
 .oc-user-text {
   white-space: pre-wrap;
-  /* Obliga a HTML a respetar los \n del código Python */
   word-break: break-word;
-  /* Evita desbordamientos horizontales */
   font-family: 'JetBrains Mono', Consolas, monospace;
   line-height: 1.5;
-  /* Da respiro entre las líneas de código */
   color: var(--accent-primary);
-  /* Un azul más suave para diferenciar de la IA */
 }
 
 /* ==========================================
@@ -2276,25 +2375,88 @@ body {
 }
 
 .settings-modal {
-  max-width: 600px;
-  /* Un poco más angosto que el modal de archivos */
-  height: auto;
-  max-height: 80vh;
+  max-width: 950px !important; 
+}
+
+.settings-layout {
+  display: flex;
+  flex: 1;
+  overflow: hidden; 
+}
+
+.settings-sidebar {
+  width: 220px;
+  background-color: var(--bg-header);
+  border-right: 1px solid var(--border-color);
+  padding: 15px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.settings-sidebar button {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  text-align: left;
+  padding: 10px 15px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  transition: all 0.2s ease;
+}
+
+.settings-sidebar button:hover {
+  background-color: var(--bg-panel);
+  color: var(--text-main);
+}
+
+.settings-sidebar button.active {
+  background-color: var(--bg-panel);
+  color: var(--accent-primary);
+  border-left: 3px solid var(--accent-primary);
+  border-radius: 0 6px 6px 0;
+}
+
+.settings-content {
+  flex: 1;
+  padding: 30px;
+  background-color: var(--bg-app);
+  overflow-y: auto;
+}
+
+.settings-view {
+  animation: fadeIn 0.2s ease-in-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(5px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 .settings-section {
-  background: var(--bg-app);
+  background-color: var(--bg-panel);
   border: 1px solid var(--border-color);
-  border-radius: 8px;
+  border-radius: 10px;
   padding: 20px;
-  margin-bottom: 20px;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+  margin-bottom: 0;
+  transition: border-color 0.2s ease;
+}
+
+.settings-section:hover {
+  border-color: var(--text-muted);
 }
 
 .settings-title {
   color: var(--text-main);
   font-size: 16px;
-  margin-bottom: 5px;
-  margin-top: 10px;
+  font-weight: bold;
+  margin-bottom: 6px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
 }
 
 .settings-desc {
@@ -2327,7 +2489,6 @@ body {
 .theme-card.active {
   border-color: var(--accent-primary);
   background: rgba(122, 162, 247, 0.05);
-  /* Efecto sutil basado en Tokyo Night */
 }
 
 .theme-color-preview {
@@ -2360,7 +2521,7 @@ body {
   background: var(--bg-panel);
   border: 1px solid var(--border-color);
   padding: 12px 16px;
-  
+
   border-radius: 6px;
 }
 
@@ -2378,17 +2539,17 @@ body {
 }
 
 .status-dot.conectado {
-  background-color: #9ece6a; /* Verde */
+  background-color: #9ece6a;
   box-shadow: 0 0 8px rgba(158, 206, 106, 0.4);
 }
 
 .status-dot.desconectado {
-  background-color: #f7768e; /* Rojo */
+  background-color: #f7768e;
   box-shadow: 0 0 8px rgba(247, 118, 142, 0.4);
 }
 
 .status-dot.conectando {
-  background-color: #e0af68; /* Amarillo */
+  background-color: #e0af68;
   animation: pulse-dot 1.5s infinite;
 }
 
@@ -2427,12 +2588,25 @@ body {
 }
 
 @keyframes spin {
-  100% { transform: rotate(360deg); }
+  100% {
+    transform: rotate(360deg);
+  }
 }
 
 @keyframes pulse-dot {
-  0% { transform: scale(0.95); opacity: 0.7; }
-  50% { transform: scale(1.1); opacity: 1; }
-  100% { transform: scale(0.95); opacity: 0.7; }
+  0% {
+    transform: scale(0.95);
+    opacity: 0.7;
+  }
+
+  50% {
+    transform: scale(1.1);
+    opacity: 1;
+  }
+
+  100% {
+    transform: scale(0.95);
+    opacity: 0.7;
+  }
 }
 </style>
