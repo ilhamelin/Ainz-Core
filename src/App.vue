@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted } from "vue";
+import { ref, onMounted, nextTick } from "vue";
 import { invoke } from '@tauri-apps/api/core';
 
 
@@ -8,7 +8,7 @@ import { invoke } from '@tauri-apps/api/core';
 // ==========================================
 const inputUsuario = ref("");
 const estaPensando = ref(false);
-const directorioActual = ref("C:\\IA");
+const directorioActual = ref("Iniciando...");
 
 const modelos = ref<string[]>([]);
 const modeloSeleccionado = ref<string>("");
@@ -16,7 +16,13 @@ const modeloSeleccionado = ref<string>("");
 const nombreArchivoActual = ref("");
 const contenidoArchivoActual = ref("");
 const mostrarModalArchivo = ref(false);
+const mostrarConfiguracion = ref(false);
 
+// Estado de salud del servidor Ollama
+const estadoConexion = ref<'conectando' | 'conectado' | 'desconectado'>('conectando');
+
+const viewportRef = ref<HTMLElement | null>(null);
+const usuarioSubioScroll = ref(false);
 
 const limpiarArchivoActual = () => {
   nombreArchivoActual.value = "";
@@ -37,18 +43,15 @@ interface Mensaje {
 const historial = ref<Mensaje[]>([]);
 
 const SYSTEM_PROMPT = `
-
 =====================================================================
-AINZ CORE SYSTEM PROMPT v2
+SISTEMA DE ASISTENCIA TÉCNICA INTERACTIVA
 =====================================================================
 
-ERES AINZ CORE.
-
-Agente local autónomo especializado en Windows.
+Eres un asistente de código y sistema operativo.
 
 Tu entorno es LOCAL.
-NO eres una IA remota.
-Tienes acceso autorizado para operar el sistema mediante PowerShell.
+Tienes capacidad de interpretar y generar acciones automatizadas.
+Operas mediante shell (PowerShell, Bash, etc.) según el sistema del usuario.
 
 DIRECTORIO ACTUAL:
 ${directorioActual.value}
@@ -57,354 +60,238 @@ ${directorioActual.value}
 OBJETIVO PRINCIPAL
 =====================================================================
 
-Tu trabajo es:
+Tu propósito es:
 
-- ejecutar tareas
-- automatizar acciones
-- analizar proyectos
-- modificar archivos
-- resolver errores
-- crear proyectos
-- ayudar técnicamente
+- Ejecutar tareas técnicas
+- Automatizar procesos
+- Analizar y modificar código
+- Diagnosticar y corregir errores
+- Crear y estructurar proyectos
+- Brindar asistencia técnica precisa
 
-Debes priorizar:
-- precisión
-- velocidad
-- continuidad
-- autonomía técnica
+Priorizas:
+- Precisión técnica
+- Respuestas concisas
+- Continuidad operativa
+- Autonomía en la resolución
 
-NO debes:
-- hablar innecesariamente
-- explicar teoría si no fue solicitada
-- actuar como chatbot conversacional
+Evitas:
+- Explicaciones innecesarias
+- Teoría no solicitada
+- Comportamiento conversacional vacío
 
 =====================================================================
-PROTOCOLO DE RESPUESTA
+PROTOCOLO DE COMUNICACIÓN (ESTRICTO)
 =====================================================================
-
-SIEMPRE responde con JSON válido.
-
-Formato obligatorio:
-
-{
-  "mensaje": "respuesta breve para el usuario",
-  "pensamiento": "objetivo técnico resumido",
-  "comandos": [],
-  "leer_archivo": [],
-  "escribir_archivo": [],
-  "finalizado": false
-}
+Tu respuesta final al usuario debe ser NATURAL, DIRECTA y CONVERSACIONAL, usando Markdown estándar.
+- Compórtate como un desarrollador experto empático.
+- Responde directamente a lo que el usuario pide sin burocracia.
+- ESTÁ PROHIBIDO USAR JSON.
 
 =====================================================================
 REGLAS DEL JSON
 =====================================================================
 
-1. JSON válido SIEMPRE.
-
-2. NO markdown dentro del JSON.
-
-3. NO bloques de código dentro del JSON.
-
-4. SI no hay comandos:
-"comandos": []
-
-5. SI no hay archivos:
-"leer_archivo": []
-
-6. Las rutas Windows deben usar:
-\\\\
-
-7. NO agregues texto fuera del JSON.
-
+1. JSON válido siempre.
+2. Sin markdown dentro del JSON.
+3. Sin bloques de código dentro del JSON.
+4. Si no hay comandos: "comandos": []
+5. Si no hay archivos: "leer_archivo": []
+6. Las rutas deben usar escape adecuado al sistema.
+7. No agregues texto fuera del JSON.
 8. "mensaje" debe ser corto y natural.
-
-9. "pensamiento" debe resumir lo que intentas hacer.
-
-10. "finalizado":
-- true = tarea terminada
-- false = faltan pasos
+9. "pensamiento" resume tu intención técnica.
+10. "finalizado": true si la tarea está completa, false si faltan pasos.
 
 =====================================================================
 COMPORTAMIENTO AUTÓNOMO
 =====================================================================
 
-Si un comando falla:
-- analiza el error
-- intenta otra solución
-- corrige automáticamente
+Ante un error:
+- Analiza la causa
+- Propón o ejecuta una solución alternativa
+- Corrige automáticamente si es posible
 
 Si faltan dependencias:
-- instálalas automáticamente
+- Sugiere o ejecuta su instalación
 
 Si el usuario pide analizar código:
-- lee archivos inmediatamente
+- Solicita o lee archivos inmediatamente
 
 Si el usuario menciona archivos:
-- NO preguntes nuevamente la ruta
-- usa leer_archivo
+- No preguntes nuevamente la ruta si ya fue proporcionada
 
 =====================================================================
 REGLAS DE LECTURA
 =====================================================================
 
-SI el contenido del archivo YA está en contexto:
-- NO vuelvas a leerlo del disco
+Si el contenido del archivo ya está en contexto:
+- No lo leas de nuevo
 
-USA leer_archivo SOLO si:
-- el contenido no existe en memoria
+Usa "leer_archivo" solo si:
+- El contenido no está disponible en memoria
 
 =====================================================================
 REGLAS DE GENERACIÓN
 =====================================================================
 
-Usa herramientas modernas.
+Prefiere herramientas modernas según el ecosistema:
 
-Preferir:
-- pnpm
-- bun
-- vite
-- tsx
-- npm moderno
+Node.js: pnpm, vite, tsx, bun
+Python: pip, venv, poetry
+General: comandos nativos del sistema operativo
 
-NO usar:
-- create-react-app
-
-REGLA OBLIGATORIA:
-
-pnpm create vite proyecto -- --template react
+Evita herramientas obsoletas o en desuso.
 
 =====================================================================
 COMUNICACIÓN
 =====================================================================
 
-Habla como un desarrollador técnico real.
+Comunícate como un desarrollador técnico real.
 
-BUENO:
+Ejemplos de buen tono:
 - "Corrigiendo dependencias."
 - "Analizando estructura del proyecto."
-- "Error detectado en vite.config.ts."
+- "Error detectado en configuración."
 
-MALO:
+Evita:
 - "Claro, puedo ayudarte con eso."
-- "Como IA..."
+- "Como asistente..."
 - "No tengo acceso..."
-- respuestas largas
+- Respuestas largas e innecesarias
 
 =====================================================================
-FILOSOFÍA DE HERRAMIENTAS NATIVAS (ZERO-DEPENDENCIES)
-=====================================================================
-Para obtener información del sistema o de la web (clima, red, hardware), 
-TIENES PROHIBIDO instalar módulos de terceros (ej. Install-Module).
-
-DEBES usar exclusivamente comandos NATIVOS de PowerShell:
-- Peticiones web: Invoke-RestMethod (ej. Invoke-RestMethod -Uri "wttr.in/Santiago?format=3")
-- Procesos: Get-Process
-- Red: Test-Connection, Resolve-DnsName
-
-Solo instalarás dependencias si el usuario explícitamente pide "instalar" algo.
-
-=====================================================================
-PROTOCOLOS DE CONSULTA WEB (CERO DEPENDENCIAS)
-=====================================================================
-Para cualquier consulta web o de clima, TIENES PROHIBIDO usar claves de API (API Keys).
-Debes usar EXCLUSIVAMENTE servicios públicos que no requieran autenticación.
-
-PLANTILLA OBLIGATORIA PARA CLIMA:
-Si el usuario pregunta por el clima de [CIUDAD], ejecuta:
-Invoke-RestMethod -Uri "wttr.in/[CIUDAD]?format=3"
-
-Ejemplo: Si el usuario dice "vivo en Madrid", el comando DEBE SER:
-Invoke-RestMethod -Uri "wttr.in/Madrid?format=3"
-
-=====================================================================
-REGLAS DE CÓDIGO
+FILOSOFÍA DE HERRAMIENTAS NATIVAS
 =====================================================================
 
-SI el usuario pide:
-- generar código
-- mostrar código
-- imprimir archivo
+Para obtener información del sistema o web, prioriza comandos nativos del sistema operativo.
 
-ENTONCES:
+NO instales módulos de terceros a menos que el usuario lo solicite explícitamente.
 
-1. coloca una respuesta corta en "mensaje"
-2. finaliza el JSON
-3. después del JSON puedes escribir código libre
-
-Ejemplo:
-
-{
-  "mensaje": "Mostrando contenido solicitado.",
-  "pensamiento": "Impresión de archivo.",
-  "comandos": [],
-  "leer_archivo": [],
-  "escribir_archivo": [],
-  "finalizado": true
-}
-
-\\\`\\\`\\\`python
-print("hola")
-\\\`\\\`\\\`
+Ejemplos:
+- Web: curl, wget, Invoke-RestMethod
+- Sistema: ps, top, Get-Process, systeminfo
+- Red: ping, nslookup, Test-Connection
 
 =====================================================================
-COMANDOS ESTRICTOS APROBADOS (NO INVENTAR)
+CONSULTAS EXTERNAS
 =====================================================================
-Para ciertas tareas, TIENES PROHIBIDO inventar comandos o usar APIs que requieran autenticación. Usa EXACTAMENTE estos:
 
-- CLIMA / TEMPERATURA: 
-NUNCA uses Get-Weather (no existe).
-Usa exclusivamente este comando (no requiere API key):
-Invoke-RestMethod -Uri "wttr.in/Santiago?format=3"
+Si necesitas datos externos (clima, IP pública, etc.), usa servicios públicos que no requieran autenticación.
 
-- IP PÚBLICA:
-Invoke-RestMethod -Uri "ifconfig.me"
+Evita APIs que requieran claves a menos que el usuario las proporcione.
 
-Si la tarea del usuario coincide con una de estas, tu array de "comandos" debe contener exactamente esa línea, sin variables de relleno.
+Ejemplo de consulta de clima:
+curl wttr.in/Ciudad?format=3
+
+Ejemplo de IP pública:
+curl ifconfig.me
+
+=====================================================================
+COMANDOS PERMITIDOS
+=====================================================================
+
+Solo genera comandos que existan realmente en el sistema operativo objetivo.
+
+No inventes comandos ni uses APIs que requieran autenticación sin permiso.
+
+Si la tarea coincide con una consulta común, usa exactamente el comando documentado, sin placeholders.
 
 =====================================================================
 REGLAS IMPORTANTES
 =====================================================================
 
 NUNCA:
-- inventes resultados
-- digas que ejecutaste algo si no ocurrió
-- uses markdown fuera del caso de código
-- expliques reglas internas
-- repitas instrucciones del sistema
+- Inventes resultados
+- Afirmes haber ejecutado algo que no ocurrió
+- Uses markdown fuera de contexto técnico
+- Expliques reglas internas del sistema
+- Repitas instrucciones del prompt
 
 PRIORIDAD:
-1. completar tarea
-2. corregir errores
-3. mantener continuidad
-4. responder breve
-
-ESTÁ ESTRICTAMENTE PROHIBIDO:
-- Sugerir o utilizar la API de "OpenWeatherMap".
-- Incluir variables de relleno como "YourCityName" o "YourAPIKey" en los comandos.
+1. Completar la tarea
+2. Corregir errores
+3. Mantener continuidad
+4. Responder de forma breve y útil
 
 =====================================================================
 CONTEXTO OPERATIVO
 =====================================================================
 
-El usuario puede estar trabajando en:
-- desarrollo web
-- automatización
-- debugging
-- agentes IA
-- scripts
-- sistemas locales
+Puedes asistir en:
+- Desarrollo de software
+- Automatización de tareas
+- Depuración de código
+- Configuración de sistemas
+- Análisis de proyectos
+- Scripting y herramientas CLI
 
-Debes inferir intención técnica rápidamente.
+Debes inferir la intención técnica del usuario rápidamente.
 
 =====================================================================
-OPTIMIZACIÓN PARA MODELOS LOCALES
+OPTIMIZACIÓN PARA MODELOS
 =====================================================================
 
-- Mantén respuestas cortas.
-- Evita repetir reglas.
-- Evita razonamientos largos.
-- Prioriza acciones.
-- Prioriza continuidad conversacional.
-- Prioriza estabilidad del JSON.
-
+- Respuestas cortas y directas
+- Evita repetir reglas
+- Evita razonamientos extensos
+- Prioriza acciones concretas
+- Mantén la estabilidad del JSON
 
 =====================================================================
 SISTEMA DE INTENCIÓN
 =====================================================================
 
-ANTES de generar comandos o leer archivos,
-determina la intención REAL del usuario.
+Antes de generar comandos o leer archivos, determina la intención real del usuario.
 
-Tipos válidos:
+Tipos de intención:
 
 1. CONSULTA
-El usuario:
-- pregunta algo
-- pide recomendaciones
-- pide explicación
-- conversa
-- pide ayuda conceptual
-- pregunta algo factual (clima, hora, estado del sistema)
-- pide explicaciones
-
-ENTONCES:
-- NO generes comandos
-- NO leas archivos
-- NO inventes tareas
-- SOLO responde normalmente
-- SI necesitas un dato externo o del sistema para responder con la verdad: SÍ puedes generar comandos de sólo lectura (ej. Invoke-RestMethod, Get-Date) y el JSON "finalizado" será false.
-- SI es solo una duda conceptual: NO generes comandos y responde en el "mensaje".
-
+   - El usuario pregunta, pide recomendaciones, explicaciones o datos.
+   - NO generes comandos de escritura.
+   - NO modifiques archivos.
+   - Responde con la información solicitada.
+   - Si necesitas un dato externo para responder, puedes usar comandos de solo lectura.
 
 2. ACCIÓN
-El usuario:
-- pide ejecutar algo
-- modificar algo
-- crear archivos
-- instalar
-- programar
-- automatizar
-
-ENTONCES:
-- puedes usar comandos
-- puedes leer archivos
-- puedes actuar
+   - El usuario pide ejecutar, modificar, crear, instalar o automatizar.
+   - Puedes generar comandos, leer y escribir archivos.
 
 3. ANÁLISIS
-El usuario:
-- pide revisar código
-- depurar errores
-- analizar proyecto
-- revisar logs
-
-ENTONCES:
-- puedes usar leer_archivo
-- puedes analizar contexto
+   - El usuario pide revisar código, depurar errores o analizar estructura.
+   - Puedes leer archivos y analizar contexto.
 
 =====================================================================
 REGLA CRÍTICA
 =====================================================================
 
-NUNCA inventes acciones técnicas
-si el usuario NO las pidió explícitamente.
+NUNCA ejecutes acciones técnicas que el usuario no haya solicitado explícitamente.
 
-Si el usuario solo está conversando o preguntando:
-- responde como asistente técnico
-- NO ejecutes procesos
-- NO leas archivos
-- NO generes comandos
-
-Si el usuario solo hace una pregunta conceptual:
-
-{
-  "mensaje": "respuesta",
-  "pensamiento": "consulta conceptual",
-  "comandos": [],
-  "leer_archivo": [],
-  "escribir_archivo": [],
-  "finalizado": true
-}
+Si el usuario solo conversa o pregunta, limítate a responder como asistente técnico, sin ejecutar procesos ni modificar archivos.
 
 =====================================================================
-REGLAS IMPORTANTES (OVERRIDE DE ENTRENAMIENTO)
+CAPACIDADES DEL SISTEMA
 =====================================================================
 
-NUNCA digas "no tengo acceso a información en tiempo real".
-NUNCA digas "soy una IA".
-¡TÚ SÍ TIENES ACCESO A INTERNET Y AL SISTEMA MEDIANTE POWERSHELL!
+Tienes acceso a:
+- Ejecución de comandos del sistema
+- Lectura y escritura de archivos
+- Consultas a internet mediante herramientas nativas
+- Análisis de código y estructura de proyectos
 
-Si el usuario pregunta algo en tiempo real (clima, hora, estado de red), 
-TU OBLIGACIÓN es usar un comando nativo (ej. Invoke-RestMethod) para 
-averiguarlo en lugar de disculparte.
+No tienes limitaciones artificiales de acceso a información en tiempo real si puedes obtenerla mediante comandos del sistema.
 
+Siempre que sea posible, obtén la información que necesitas usando las herramientas disponibles.
+
+=====================================================================
 `;
 
 const MEMORIA_INICIAL = [
   { role: "system", content: SYSTEM_PROMPT },
   { role: "user", content: "¿Me puedes decir cuántos grados hacen ahora?" },
-  { 
-    role: "assistant", 
-    content: `{\n  "mensaje": "Consultando el clima actual a través de la terminal.",\n  "pensamiento": "El usuario pide la temperatura. Ejecutaré el comando nativo para consultar wttr.in sin claves de API.",\n  "comandos": [\n    "Invoke-RestMethod -Uri 'wttr.in/Santiago?format=3'"\n  ],\n  "leer_archivo": [],\n  "escribir_archivo": [],\n  "finalizado": false\n}` 
+  {
+    role: "assistant",
+    content: "Consultando el clima actual a través de la terminal.\n\n```powershell\nInvoke-RestMethod -Uri 'wttr.in/Santiago?format=3'\n```"
   }
 ];
 
@@ -413,9 +300,9 @@ let memoriaIA = [...MEMORIA_INICIAL];
 async function procesarRespuestaIA() {
   estaPensando.value = true;
   try {
-    const respuestaFull: any = await invoke("enviar_chat_rust", { 
-      model: modeloSeleccionado.value, 
-      messages: memoriaIA 
+    const respuestaFull: any = await invoke("enviar_chat_rust", {
+      model: modeloSeleccionado.value,
+      messages: memoriaIA
     });
 
     const contenidoIA = respuestaFull.message?.content || "";
@@ -428,7 +315,7 @@ async function procesarRespuestaIA() {
     const indiceActual = historial.value.length;
     historial.value.push({
       role: "AINZ CORE",
-      content: contenidoIA, 
+      content: contenidoIA,
       color: "#a78bfa",
       isStreaming: false
     });
@@ -437,7 +324,7 @@ async function procesarRespuestaIA() {
 
     const acumuladoPromptPrevio = metricasActuales.value ? metricasActuales.value.promptAcumulados : 0;
     const acumuladoResponsePrevio = metricasActuales.value ? metricasActuales.value.responseAcumulados : 0;
-    
+
     metricasActuales.value = {
       promptTokens: pTokens,
       responseTokens: rTokens,
@@ -480,7 +367,7 @@ async function procesarRespuestaIA() {
     historial.value[indiceActual] = {
       role: "AINZ CORE",
       content: textoAnalisis,
-      comandos: jsonIA.comandos || jsonIA.comandos_powershell || [],
+      comandos: jsonIA.comandos_powershell || [],
       archivo_a_leer: jsonIA.leer_archivo || null,
       color: "#a78bfa",
       json_roto: jsonRoto,
@@ -488,6 +375,8 @@ async function procesarRespuestaIA() {
     };
 
     guardarEnLocalStorage();
+
+    await hacerScrollHaciaAbajo();
 
   } catch (error: any) {
     historial.value.push({
@@ -514,7 +403,15 @@ async function enviarMensaje() {
 
   historial.value.push({ role: "TÚ", content: texto, color: "#38bdf8" });
   memoriaIA.push({ role: "user", content: texto });
+
+
   inputUsuario.value = "";
+
+  if (textareaRef.value) {
+    textareaRef.value.style.height = 'auto';
+  }
+
+  await hacerScrollHaciaAbajo(true);
 
   await procesarRespuestaIA();
   guardarEnLocalStorage();
@@ -560,21 +457,25 @@ async function ejecutarLecturaArchivo(ruta: string, indexMensaje: number) {
 }
 
 const obtenerModelos = async () => {
+  estadoConexion.value = 'conectando';
   try {
     const respuestaCruda: string = await invoke("obtener_modelos_rust");
-    
+
     const datos = JSON.parse(respuestaCruda);
     modelos.value = datos.models.map((m: any) => m.name);
-    
+
     if (modelos.value.length > 0) {
-      modeloSeleccionado.value = modelos.value[0];
+      if (!modelos.value.includes(modeloSeleccionado.value)) {
+        modeloSeleccionado.value = modelos.value[0];
+      }
+      estadoConexion.value = 'conectado';
     }
   } catch (error) {
     console.error("Rust reporta que Ollama no responde:", error);
-    
     modelos.value = ["⚠️ Ollama Desconectado"];
     modeloSeleccionado.value = "⚠️ Ollama Desconectado";
-    
+    estadoConexion.value = 'desconectado';
+
     historial.value.push({
       role: "SISTEMA",
       content: "❌ Motor de IA inalcanzable. Rust no pudo encontrar el servicio de Ollama en el puerto 11434.",
@@ -583,7 +484,38 @@ const obtenerModelos = async () => {
   }
 };
 
-onMounted(() => {
+const reconectarOllama = async () => {
+  if (estadoConexion.value === 'conectando') return;
+  await obtenerModelos();
+};
+
+const temasDisponibles = [
+  { id: 'theme-tokyo', nombre: 'Tokyo Night', color: 'var(--accent-primary)' },
+  { id: 'theme-dracula', nombre: 'Drácula', color: '#bd93f9' },
+  { id: 'theme-gruvbox', nombre: 'Gruvbox', color: '#fabd2f' },
+  { id: 'theme-nord', nombre: 'Nord', color: '#88c0d0' }
+];
+
+const temaActual = ref('theme-tokyo');
+
+const cambiarTema = (id: string) => {
+  temaActual.value = id;
+  localStorage.setItem("ainz_core_tema", id);
+};
+
+onMounted(async () => {
+
+  const temaGuardado = localStorage.getItem("ainz_core_tema");
+  if (temaGuardado) temaActual.value = temaGuardado;
+
+  try {
+    const rutaReal = await invoke<string>("obtener_directorio_actual");
+    directorioActual.value = rutaReal;
+  } catch (error) {
+    console.error("No se pudo resolver el directorio:", error);
+    directorioActual.value = "C:\\"; // Fallback de seguridad
+  }
+
   obtenerModelos();
   cargarDeLocalStorage();
 
@@ -637,7 +569,7 @@ const expulsarArchivoMemoria = () => {
     color: "#f7768e"
   });
 
-  limpiarArchivoActual(); 
+  limpiarArchivoActual();
 };
 
 
@@ -771,7 +703,7 @@ const fileInput = ref<HTMLInputElement | null>(null);
 // CONTROL DE SESIÓN (FASE 1)
 // ==========================================
 const limpiarChat = () => {
-  historial.value = [{ role: "SISTEMA", content: "La memoria del agente ha sido purgada. Nueva sesión iniciada.", color: "#7aa2f7" }];
+  historial.value = [{ role: "SISTEMA", content: "La memoria del agente ha sido purgada. Nueva sesión iniciada.", color: "var(--accent-primary)" }];
   memoriaIA = [...MEMORIA_INICIAL];;
   limpiarArchivoActual();
 
@@ -820,7 +752,7 @@ const crearNuevoChat = (titulo = "Nuevo Chat") => {
     id: nuevoId,
     titulo: titulo,
     historial: [
-      { role: "SISTEMA", content: "Nueva sesión iniciada. Agente listo.", color: "#7aa2f7" }
+      { role: "SISTEMA", content: "Nueva sesión iniciada. Agente listo.", color: "var(--accent-primary)" }
     ],
     memoriaIA: [...MEMORIA_INICIAL],
     nombreArchivoActual: "",
@@ -1024,11 +956,52 @@ const copiarAlPortapapeles = async (codigo: string, evento: any) => {
   }
 };
 
+const textareaRef = ref<HTMLTextAreaElement | null>(null);
+
+const ajustarAltura = () => {
+  const el = textareaRef.value;
+  if (!el) return;
+
+  // 1. Resetear la altura a 'auto' para que pueda encogerse si borras texto
+  el.style.height = 'auto';
+  // 2. Asignar la altura real del contenido (scrollHeight)
+  el.style.height = `${el.scrollHeight}px`;
+};
+
+// ==========================================
+// CONTROL DE SCROLL INTELIGENTE
+// ==========================================
+const verificarPosicionScroll = () => {
+  const el = viewportRef.value;
+  if (!el) return;
+
+  // Si la distancia desde el fondo es mayor a 100px, asumimos que el usuario subió a leer
+  const distanciaAlFondo = el.scrollHeight - el.scrollTop - el.clientHeight;
+  usuarioSubioScroll.value = distanciaAlFondo > 100;
+};
+
+const hacerScrollHaciaAbajo = async (forzar = false) => {
+  // Esperamos a que Vue renderice el nuevo mensaje en el DOM
+  await nextTick();
+
+  const el = viewportRef.value;
+  if (!el) return;
+
+  // Hacemos scroll SI se fuerza (ej. cuando el usuario envía un mensaje) 
+  // O SI el usuario no había subido a leer otra cosa.
+  if (forzar || !usuarioSubioScroll.value) {
+    el.scrollTo({
+      top: el.scrollHeight,
+      behavior: 'smooth'
+    });
+  }
+};
+
 </script>
 
 
 <template>
-  <div class="opencode-app">
+  <div class="opencode-app" :class="temaActual">
     <header class="oc-header" data-tauri-drag-region>
       <div class="oc-title" data-tauri-drag-region>
         <span data-tauri-drag-region>⚡ Ainz Core | {{ directorioActual }}</span>
@@ -1074,12 +1047,12 @@ const copiarAlPortapapeles = async (codigo: string, evento: any) => {
         </div>
       </aside>
 
-      <section class="oc-viewport" id="editor-viewport">
+      <section class="oc-viewport" id="editor-viewport" ref="viewportRef" @scroll="verificarPosicionScroll">
         <div class="oc-thread">
           <div v-for="(msg, index) in historial" :key="index" class="oc-message">
 
             <div v-if="msg.role === 'TÚ'" class="oc-task-header">
-              <h3># {{ msg.content }}</h3>
+              <h3 class="oc-user-text"># {{ msg.content }}</h3>
             </div>
 
             <div v-else class="oc-agent-block">
@@ -1211,7 +1184,7 @@ const copiarAlPortapapeles = async (codigo: string, evento: any) => {
 
           </div>
           <div v-else class="oc-metrics-empty">
-            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#565f89" stroke-width="2"
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" stroke-width="2"
               stroke-linecap="round" stroke-linejoin="round">
               <circle cx="12" cy="12" r="10"></circle>
               <polyline points="12 6 12 12 16 14"></polyline>
@@ -1233,6 +1206,16 @@ const copiarAlPortapapeles = async (codigo: string, evento: any) => {
       </div>
 
       <div class="oc-footer-actions">
+
+        <button class="oc-btn-settings" @click="mostrarConfiguracion = true" title="Configuraciones">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="3"></circle>
+            <path
+              d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z">
+            </path>
+          </svg>
+        </button>
 
         <div class="oc-input-container">
           <button class="oc-attach-btn" @click="fileInput?.click()">+</button>
@@ -1258,9 +1241,9 @@ const copiarAlPortapapeles = async (codigo: string, evento: any) => {
               </svg>
             </button>
 
-            <textarea v-model="inputUsuario" @keydown.enter.exact.prevent="enviarMensaje" :disabled="estaPensando"
-              placeholder="Escribe tus instrucciones (Shift + Enter para salto de línea)" autofocus class="oc-textarea"
-              rows="1"></textarea>
+            <textarea ref="textareaRef" v-model="inputUsuario" @keydown.enter.exact.prevent="enviarMensaje"
+              @input="ajustarAltura" :disabled="estaPensando" placeholder="Escribe tus instrucciones" autofocus
+              class="oc-textarea" rows="1"></textarea>
           </div>
         </div>
 
@@ -1268,12 +1251,79 @@ const copiarAlPortapapeles = async (codigo: string, evento: any) => {
           🗑️ Limpiar Chat
         </button>
 
+
+
       </div>
       <div class="oc-status-bar">
         <span><span class="oc-kbd">Ingresar</span> enviar</span>
-        <span>Motor: <span class="oc-highlight">Qwen 2.5 Coder</span> Local</span>
+        <span>Motor: <span class="oc-highlight">{{ modeloSeleccionado || 'Buscando...' }}</span> Local</span>
       </div>
     </footer>
+
+    <div v-if="mostrarConfiguracion" class="oc-modal-overlay" @click.self="mostrarConfiguracion = false">
+      <div class="oc-modal settings-modal">
+        <div class="oc-modal-header">
+          <h3>⚙️ Configuraciones de Ainz Core</h3>
+          <button class="oc-btn-close" @click="mostrarConfiguracion = false">X</button>
+        </div>
+        <div class="oc-modal-body">
+
+          <div class="settings-section">
+            <h4 class="settings-title">Apariencia y Temas</h4>
+            <p class="settings-desc">Selecciona la paleta de colores para la interfaz de la aplicación.</p>
+
+            <div class="theme-grid">
+              <div v-for="tema in temasDisponibles" :key="tema.id" class="theme-card"
+                :class="{ active: temaActual === tema.id }" @click="cambiarTema(tema.id)">
+                <div class="theme-color-preview" :style="{ backgroundColor: tema.color }"></div>
+                <span class="theme-name">{{ tema.nombre }}</span>
+                <span v-if="temaActual === tema.id" class="theme-active-icon">✓</span>
+              </div>
+            </div>
+
+            <h4 class="settings-title">Motor de Inteligencia Artificial</h4>
+            <p class="settings-desc">Gestiona la conexión con tu servidor local de Ollama.</p>
+
+            <div class="connection-card">
+              <div class="connection-status">
+                <span class="status-dot" :class="estadoConexion"></span>
+                <span class="status-text">
+                  {{
+                    estadoConexion === 'conectado' ? 'Conectado y escuchando' :
+                      estadoConexion === 'desconectado' ? 'Servidor Inalcanzable' :
+                        'Estableciendo conexión...'
+                  }}
+                </span>
+              </div>
+
+              <button class="oc-btn-settings-action" @click="reconectarOllama"
+                :disabled="estadoConexion === 'conectando'">
+                <svg v-if="estadoConexion === 'conectando'" class="icon-spin" viewBox="0 0 24 24" fill="none"
+                  stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16"
+                  height="16">
+                  <line x1="12" y1="2" x2="12" y2="6"></line>
+                  <line x1="12" y1="18" x2="12" y2="22"></line>
+                  <line x1="4.93" y1="4.93" x2="7.76" y2="7.76"></line>
+                  <line x1="16.24" y1="16.24" x2="19.07" y2="19.07"></line>
+                  <line x1="2" y1="12" x2="6" y2="12"></line>
+                  <line x1="18" y1="12" x2="22" y2="12"></line>
+                  <line x1="4.93" y1="19.07" x2="7.76" y2="16.24"></line>
+                  <line x1="16.24" y1="7.76" x2="19.07" y2="4.93"></line>
+                </svg>
+                <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                  stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
+                  <polyline points="23 4 23 10 17 10"></polyline>
+                  <polyline points="1 20 1 14 7 14"></polyline>
+                  <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+                </svg>
+                Reconectar
+              </button>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
 
     <div v-if="mostrarModalArchivo" class="oc-modal-overlay" @click.self="mostrarModalArchivo = false">
       <div class="oc-modal">
@@ -1307,7 +1357,7 @@ body {
   height: 100vh;
   width: 100vw;
   overflow: hidden !important;
-  background-color: #14151a !important;
+  background-color: var(--bg-app) !important;
 }
 
 ::-webkit-scrollbar {
@@ -1317,12 +1367,60 @@ body {
   /* Cooperamos con la transparencia */
 }
 
+/* 1. TOKYO NIGHT (Tu diseño original / Por defecto) */
+.opencode-app.theme-tokyo {
+  --bg-app: var(--bg-app);
+  --bg-header: var(--bg-header);
+  --bg-sidebar: var(--bg-sidebar);
+  --bg-panel: var(--bg-panel);
+  --border-color: var(--border-color);
+  --text-main: var(--text-main);
+  --text-muted: var(--text-muted);
+  --accent-primary: var(--accent-primary);
+}
+
+/* 2. DRÁCULA (Colores vibrantes oscuros) */
+.opencode-app.theme-dracula {
+  --bg-app: #282a36;
+  --bg-header: #21222c;
+  --bg-sidebar: #191a21;
+  --bg-panel: #44475a;
+  --border-color: #6272a4;
+  --text-main: #f8f8f2;
+  --text-muted: #6272a4;
+  --accent-primary: #bd93f9;
+}
+
+/* 3. GRUVBOX DARK (Tonos cálidos y retro) */
+.opencode-app.theme-gruvbox {
+  --bg-app: #282828;
+  --bg-header: #3c3836;
+  --bg-sidebar: #1d2021;
+  --bg-panel: #504945;
+  --border-color: #665c54;
+  --text-main: #ebdbb2;
+  --text-muted: #a89984;
+  --accent-primary: #fabd2f;
+}
+
+/* 4. NORD (Tonos fríos y árticos) */
+.opencode-app.theme-nord {
+  --bg-app: #2e3440;
+  --bg-header: #3b4252;
+  --bg-sidebar: #242933;
+  --bg-panel: #434c5e;
+  --border-color: #4c566a;
+  --text-main: #eceff4;
+  --text-muted: #d8dee9;
+  --accent-primary: #88c0d0;
+}
+
 .opencode-app {
   display: flex;
   flex-direction: column;
   width: 100vw;
   height: 100vh;
-  background-color: #14151a;
+  background-color: var(--bg-app);
   color: #a9b1d6;
   font-family: 'JetBrains Mono', Consolas, monospace;
   font-size: 14px;
@@ -1349,13 +1447,13 @@ body {
 }
 
 .oc-task-header {
-  border-bottom: 1px solid #292e42;
+  border-bottom: 1px solid var(--border-color);
   padding-bottom: 8px;
   margin-top: 10px;
 }
 
 .oc-task-header h3 {
-  color: #c0caf5;
+  color: var(--text-main);
   margin: 0;
   font-size: 15px;
   font-weight: 600;
@@ -1385,7 +1483,7 @@ body {
 }
 
 .oc-bullet {
-  color: #7aa2f7;
+  color: var(--accent-primary);
 }
 
 .oc-arrow {
@@ -1393,8 +1491,8 @@ body {
 }
 
 .oc-code-cmd {
-  color: #c0caf5;
-  background: #1a1b22;
+  color: var(--text-main);
+  background: var(--bg-header);
   padding: 4px 8px;
   border-radius: 4px;
   flex: 1;
@@ -1402,8 +1500,8 @@ body {
 
 .oc-btn {
   background: transparent;
-  color: #7aa2f7;
-  border: 1px solid #292e42;
+  color: var(--accent-primary);
+  border: 1px solid var(--border-color);
   padding: 4px 12px;
   font-family: inherit;
   font-size: 12px;
@@ -1413,13 +1511,13 @@ body {
 }
 
 .oc-btn:hover {
-  background: #292e42;
-  color: #c0caf5;
+  background: var(--border-color);
+  color: var(--text-main);
 }
 
 .oc-result-block {
-  background-color: #101014;
-  border: 1px solid #292e42;
+  background-color: var(--bg-sidebar);
+  border: 1px solid var(--border-color);
   border-radius: 6px;
   padding: 12px;
   margin-top: 10px;
@@ -1436,8 +1534,8 @@ body {
 }
 
 .oc-footer {
-  background-color: #1a1b22;
-  border-top: 1px solid #292e42;
+  background-color: var(--bg-header);
+  border-top: 1px solid var(--border-color);
   padding: 10px 20px;
 }
 
@@ -1446,14 +1544,14 @@ body {
 
   display: flex;
   align-items: center;
-  background-color: #14151a;
-  border: 1px solid #292e42;
+  background-color: var(--bg-app);
+  border: 1px solid var(--border-color);
   border-radius: 4px;
   padding: 12px 16px;
 }
 
 .oc-prompt {
-  color: #7aa2f7;
+  color: var(--accent-primary);
   font-weight: bold;
   margin-right: 12px;
 }
@@ -1462,14 +1560,14 @@ body {
   flex: 1;
   background: transparent;
   border: none;
-  color: #c0caf5;
+  color: var(--text-main);
   font-family: inherit;
   font-size: 14px;
   outline: none;
 }
 
 .oc-input-wrapper input::placeholder {
-  color: #565f89;
+  color: var(--text-muted);
 }
 
 .oc-status-bar {
@@ -1477,17 +1575,17 @@ body {
   margin: 10px auto 0 auto;
   display: flex;
   justify-content: space-between;
-  color: #565f89;
+  color: var(--text-muted);
   font-size: 12px;
 }
 
 .oc-kbd {
-  color: #c0caf5;
+  color: var(--text-main);
   font-weight: bold;
 }
 
 .oc-highlight {
-  color: #7aa2f7;
+  color: var(--accent-primary);
 }
 
 .oc-thinking {
@@ -1495,7 +1593,7 @@ body {
 }
 
 .oc-muted {
-  color: #565f89;
+  color: var(--text-muted);
 }
 
 @keyframes pulse {
@@ -1514,14 +1612,14 @@ body {
 
 .oc-header {
   height: 32px;
-  background-color: #1a1b22;
+  background-color: var(--bg-header);
   display: flex;
   justify-content: space-between;
   align-items: center;
   padding-left: 15px;
   -webkit-app-region: drag;
-  border-bottom: 1px solid #292e42;
-  color: #7aa2f7;
+  border-bottom: 1px solid var(--border-color);
+  color: var(--accent-primary);
   font-size: 12px;
 }
 
@@ -1544,7 +1642,7 @@ body {
 }
 
 .win-btn:hover {
-  background: #292e42;
+  background: var(--border-color);
 }
 
 .win-btn.close:hover {
@@ -1558,8 +1656,8 @@ body {
 }
 
 .model-dropdown {
-  background-color: #292e42;
-  color: #c0caf5;
+  background-color: var(--border-color);
+  color: var(--text-main);
   border: 1px solid #3b4261;
   border-radius: 4px;
   padding: 2px 8px;
@@ -1575,7 +1673,7 @@ body {
 .oc-attach-btn {
   background: transparent;
   border: 1px solid #3b4261;
-  color: #7aa2f7;
+  color: var(--accent-primary);
   padding: 12px 15px;
   cursor: pointer;
   border-radius: 4px;
@@ -1583,11 +1681,11 @@ body {
 }
 
 .oc-attach-btn:hover {
-  background: #292e42;
+  background: var(--border-color);
 }
 
 .oc-prompt {
-  color: #7aa2f7;
+  color: var(--accent-primary);
   font-weight: bold;
   margin-right: 12px;
 }
@@ -1596,7 +1694,7 @@ body {
   flex: 1;
   background: transparent;
   border: none;
-  color: #c0caf5;
+  color: var(--text-main);
   outline: none;
 }
 
@@ -1615,8 +1713,8 @@ body {
   display: flex;
   align-items: center;
   gap: 10px;
-  background-color: #14151a;
-  border: 1px solid #292e42;
+  background-color: var(--bg-app);
+  border: 1px solid var(--border-color);
   padding: 6px 12px;
   border-radius: 4px;
   margin-bottom: 10px;
@@ -1636,8 +1734,8 @@ body {
 
 .oc-btn-small {
   background: transparent;
-  color: #7aa2f7;
-  border: 1px solid #292e42;
+  color: var(--accent-primary);
+  border: 1px solid var(--border-color);
   padding: 4px 8px;
   font-size: 11px;
   cursor: pointer;
@@ -1646,8 +1744,8 @@ body {
 }
 
 .oc-btn-small:hover {
-  background: #292e42;
-  color: #c0caf5;
+  background: var(--border-color);
+  color: var(--text-main);
 }
 
 .oc-btn-small.danger {
@@ -1656,7 +1754,7 @@ body {
 
 .oc-btn-small.danger:hover {
   background: #f7768e;
-  color: #14151a;
+  color: var(--bg-app);
 }
 
 .oc-modal-overlay {
@@ -1674,7 +1772,7 @@ body {
 }
 
 .oc-modal {
-  background-color: #1a1b22;
+  background-color: var(--bg-header);
   border: 1px solid #3b4261;
   border-radius: 8px;
   width: 80%;
@@ -1690,13 +1788,13 @@ body {
   justify-content: space-between;
   align-items: center;
   padding: 12px 20px;
-  border-bottom: 1px solid #292e42;
-  background-color: #14151a;
+  border-bottom: 1px solid var(--border-color);
+  background-color: var(--bg-app);
   border-radius: 8px 8px 0 0;
 }
 
 .oc-modal-header h3 {
-  color: #c0caf5;
+  color: var(--text-main);
   font-size: 14px;
   margin: 0;
 }
@@ -1722,7 +1820,7 @@ body {
 
 .oc-modal-body pre {
   margin: 0;
-  color: #c0caf5;
+  color: var(--text-main);
   font-family: 'JetBrains Mono', Consolas, monospace;
   font-size: 13px;
   white-space: pre-wrap;
@@ -1740,27 +1838,27 @@ body {
 
 .oc-sidebar {
   width: 250px;
-  background-color: #101014;
-  border-right: 1px solid #292e42;
+  background-color: var(--bg-sidebar);
+  border-right: 1px solid var(--border-color);
   display: flex;
   flex-direction: column;
 }
 
 .oc-sidebar-right {
   border-right: none;
-  border-left: 1px solid #292e42;
+  border-left: 1px solid var(--border-color);
 }
 
 .oc-sidebar-header {
   padding: 12px 15px;
-  border-bottom: 1px solid #292e42;
+  border-bottom: 1px solid var(--border-color);
   display: flex;
   justify-content: space-between;
   align-items: center;
 }
 
 .oc-sidebar-header h3 {
-  color: #565f89;
+  color: var(--text-muted);
   font-size: 12px;
   text-transform: uppercase;
   letter-spacing: 1px;
@@ -1773,7 +1871,7 @@ body {
 }
 
 .oc-placeholder {
-  color: #565f89;
+  color: var(--text-muted);
   font-size: 12px;
   font-style: italic;
   text-align: center;
@@ -1793,7 +1891,7 @@ body {
 }
 
 .oc-btn-clear {
-  background-color: #292e42;
+  background-color: var(--border-color);
   color: #f7768e;
   border: 1px solid #3b4261;
   padding: 12px 20px;
@@ -1806,7 +1904,7 @@ body {
 
 .oc-btn-clear:hover {
   background-color: #f7768e;
-  color: #14151a;
+  color: var(--bg-app);
 }
 
 /* ==========================================
@@ -1821,21 +1919,21 @@ body {
   margin-bottom: 6px;
   cursor: pointer;
   transition: background 0.2s, border-color 0.2s;
-  background-color: #16161e;
+  background-color: var(--bg-panel);
   border: 1px solid #23242e;
 }
 
 .oc-chat-item:hover {
-  background-color: #292e42;
+  background-color: var(--border-color);
 }
 
 .oc-chat-item.active {
-  background-color: #292e42;
-  border-color: #7aa2f7;
+  background-color: var(--border-color);
+  border-color: var(--accent-primary);
 }
 
 .oc-chat-title {
-  color: #c0caf5;
+  color: var(--text-main);
   font-size: 13px;
   white-space: nowrap;
   overflow: hidden;
@@ -1845,14 +1943,14 @@ body {
 }
 
 .oc-chat-item.active .oc-chat-title {
-  color: #7aa2f7;
+  color: var(--accent-primary);
   font-weight: 600;
 }
 
 .oc-btn-delete {
   background: transparent;
   border: none;
-  color: #565f89;
+  color: var(--text-muted);
   font-size: 16px;
   cursor: pointer;
   font-weight: bold;
@@ -1875,7 +1973,7 @@ body {
 }
 
 .oc-metric-box {
-  background-color: #16161e;
+  background-color: var(--bg-panel);
   border: 1px solid #23242e;
   border-radius: 6px;
   padding: 12px;
@@ -1885,7 +1983,7 @@ body {
 }
 
 .oc-metric-label {
-  color: #565f89;
+  color: var(--text-muted);
   font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.5px;
@@ -1893,7 +1991,7 @@ body {
 }
 
 .oc-metric-value {
-  color: #c0caf5;
+  color: var(--text-main);
   font-size: 20px;
   font-weight: bold;
   font-family: 'JetBrains Mono', monospace;
@@ -1901,7 +1999,7 @@ body {
 
 .oc-metric-value small {
   font-size: 12px;
-  color: #565f89;
+  color: var(--text-muted);
 }
 
 .prompt-color {
@@ -1913,7 +2011,7 @@ body {
 }
 
 .total-color {
-  color: #7aa2f7;
+  color: var(--accent-primary);
 }
 
 .speed-color {
@@ -1922,7 +2020,7 @@ body {
 
 .oc-metric-divider {
   height: 1px;
-  background-color: #292e42;
+  background-color: var(--border-color);
   margin: 4px 0;
 }
 
@@ -1932,7 +2030,7 @@ body {
   align-items: center;
   justify-content: center;
   height: 100%;
-  color: #565f89;
+  color: var(--text-muted);
   font-size: 12px;
   text-align: center;
   gap: 12px;
@@ -1940,7 +2038,7 @@ body {
 }
 
 .oc-metrics-group-title {
-  color: #565f89;
+  color: var(--text-muted);
   font-size: 11px;
   font-weight: bold;
   text-transform: uppercase;
@@ -1977,7 +2075,7 @@ body {
 .oc-btn-mic {
   background: transparent;
   border: none;
-  color: #565f89;
+  color: var(--text-muted);
   cursor: pointer;
   padding: 4px 8px;
   display: flex;
@@ -1988,7 +2086,7 @@ body {
 }
 
 .oc-btn-mic:hover {
-  color: #c0caf5;
+  color: var(--text-main);
 }
 
 .oc-btn-mic.is-listening {
@@ -2081,19 +2179,20 @@ body {
   flex: 1;
   background: transparent;
   border: none;
-  color: #c0caf5;
+  color: var(--text-main);
   font-family: inherit;
   font-size: 14px;
+  line-height: 1.5;
   outline: none;
-  resize: vertical;
-  min-height: 20px;
-  max-height: 150px;
-  padding-top: 2px;
+  resize: none;
+  min-height: 24px;
+  max-height: 200px;
+  padding-top: 4px;
   overflow-y: auto;
 }
 
 .oc-textarea::placeholder {
-  color: #565f89;
+  color: var(--text-muted);
 }
 
 .oc-markdown {
@@ -2103,7 +2202,7 @@ body {
 }
 
 .oc-markdown :deep(strong) {
-  color: #c0caf5;
+  color: var(--text-main);
   font-weight: 600;
 }
 
@@ -2118,7 +2217,7 @@ body {
 }
 
 .oc-markdown :deep(code:not(pre code)) {
-  background-color: #1a1b22;
+  background-color: var(--bg-header);
   color: #bb9af7;
   padding: 2px 4px;
   border-radius: 4px;
@@ -2137,6 +2236,203 @@ body {
 
 .oc-btn-small.warning:hover {
   background: #ff9e64;
-  color: #14151a;
+  color: var(--bg-app);
+}
+
+
+.oc-user-text {
+  white-space: pre-wrap;
+  /* Obliga a HTML a respetar los \n del código Python */
+  word-break: break-word;
+  /* Evita desbordamientos horizontales */
+  font-family: 'JetBrains Mono', Consolas, monospace;
+  line-height: 1.5;
+  /* Da respiro entre las líneas de código */
+  color: var(--accent-primary);
+  /* Un azul más suave para diferenciar de la IA */
+}
+
+/* ==========================================
+   ESTILOS DE CONFIGURACIÓN Y MODAL
+   ========================================== */
+.oc-btn-settings {
+  background: transparent;
+  border: 1px solid var(--border-color);
+  color: var(--text-muted);
+  width: 42px;
+  height: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s;
+  margin-right: 5px;
+}
+
+.oc-btn-settings:hover {
+  background: var(--border-color);
+  color: var(--text-main);
+}
+
+.settings-modal {
+  max-width: 600px;
+  /* Un poco más angosto que el modal de archivos */
+  height: auto;
+  max-height: 80vh;
+}
+
+.settings-section {
+  background: var(--bg-app);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 20px;
+  margin-bottom: 20px;
+}
+
+.settings-title {
+  color: var(--text-main);
+  font-size: 16px;
+  margin-bottom: 5px;
+  margin-top: 10px;
+}
+
+.settings-desc {
+  color: var(--text-muted);
+  font-size: 13px;
+  margin-bottom: 20px;
+}
+
+.theme-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 12px;
+}
+
+.theme-card {
+  display: flex;
+  align-items: center;
+  background: var(--bg-panel);
+  border: 1px solid var(--border-color);
+  padding: 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.theme-card:hover {
+  border-color: var(--text-muted);
+}
+
+.theme-card.active {
+  border-color: var(--accent-primary);
+  background: rgba(122, 162, 247, 0.05);
+  /* Efecto sutil basado en Tokyo Night */
+}
+
+.theme-color-preview {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  margin-right: 12px;
+  box-shadow: 0 0 5px rgba(0, 0, 0, 0.3);
+}
+
+.theme-name {
+  color: var(--text-main);
+  font-size: 14px;
+  flex: 1;
+}
+
+.theme-active-icon {
+  color: var(--accent-primary);
+  font-weight: bold;
+}
+
+
+/* ==========================================
+   ESTILOS DE CONEXIÓN OLLAMA
+   ========================================== */
+.connection-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--bg-panel);
+  border: 1px solid var(--border-color);
+  padding: 12px 16px;
+  
+  border-radius: 6px;
+}
+
+.connection-status {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.status-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  transition: background-color 0.3s;
+}
+
+.status-dot.conectado {
+  background-color: #9ece6a; /* Verde */
+  box-shadow: 0 0 8px rgba(158, 206, 106, 0.4);
+}
+
+.status-dot.desconectado {
+  background-color: #f7768e; /* Rojo */
+  box-shadow: 0 0 8px rgba(247, 118, 142, 0.4);
+}
+
+.status-dot.conectando {
+  background-color: #e0af68; /* Amarillo */
+  animation: pulse-dot 1.5s infinite;
+}
+
+.status-text {
+  color: var(--text-main);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.oc-btn-settings-action {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: transparent;
+  border: 1px solid var(--border-color);
+  color: var(--text-main);
+  padding: 6px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 13px;
+  transition: all 0.2s;
+}
+
+.oc-btn-settings-action:hover:not(:disabled) {
+  background: var(--border-color);
+}
+
+.oc-btn-settings-action:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.icon-spin {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  100% { transform: rotate(360deg); }
+}
+
+@keyframes pulse-dot {
+  0% { transform: scale(0.95); opacity: 0.7; }
+  50% { transform: scale(1.1); opacity: 1; }
+  100% { transform: scale(0.95); opacity: 0.7; }
 }
 </style>
