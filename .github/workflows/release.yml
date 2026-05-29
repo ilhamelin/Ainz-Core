@@ -50,3 +50,4 @@ jobs:
           releaseBody: 'Actualización automática del Agente.'
           releaseDraft: false
           prerelease: false
+          includeUpdaterJson: true

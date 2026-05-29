@@ -1044,6 +1044,21 @@ const hacerScrollHaciaAbajo = async (forzar = false) => {
   }
 };
 
+import { getVersion } from '@tauri-apps/api/app';
+
+// Variable reactiva para guardar la versión
+const appVersion = ref('Cargando...');
+
+onMounted(async () => {
+  try {
+    // Le pedimos a Rust la versión oficial del tauri.conf.json
+    appVersion.value = await getVersion();
+  } catch (error) {
+    console.error("Error al leer la versión de Tauri:", error);
+    appVersion.value = "Desconocida";
+  }
+});
+
 </script>
 
 
@@ -1413,7 +1428,7 @@ const hacerScrollHaciaAbajo = async (forzar = false) => {
                 </div>
                 <div>
                   <h3 style="color: var(--text-main); margin: 0;">Ainz Core</h3>
-                  <p style="color: var(--text-muted); margin: 5px 0;">Versión 0.1.1</p>
+                  <p style="color: var(--text-muted); margin: 5px 0;">Versión {{ appVersion }}</p>
                   <p style="color: var(--text-muted); font-size: 12px; line-height: 1.5;">
                     Agente local autónomo especializado en Windows.<br>
                     Impulsado por Tauri v2 y modelos de lenguaje locales.
@@ -2375,13 +2390,13 @@ body {
 }
 
 .settings-modal {
-  max-width: 950px !important; 
+  max-width: 950px !important;
 }
 
 .settings-layout {
   display: flex;
   flex: 1;
-  overflow: hidden; 
+  overflow: hidden;
 }
 
 .settings-sidebar {
@@ -2432,8 +2447,15 @@ body {
 }
 
 @keyframes fadeIn {
-  from { opacity: 0; transform: translateY(5px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(5px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .settings-section {
