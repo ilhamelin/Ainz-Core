@@ -5,6 +5,10 @@ import { invoke } from '@tauri-apps/api/core';
 import { check, type Update } from '@tauri-apps/plugin-updater';
 import { relaunch } from '@tauri-apps/plugin-process';
 
+import { open } from '@tauri-apps/plugin-dialog';
+import { readDir, readTextFile, writeTextFile, type DirEntry } from '@tauri-apps/plugin-fs';
+import { join } from '@tauri-apps/api/path';
+
 
 // ==========================================
 // Tipografía Dinámica y Personalización de Fuentes
@@ -28,8 +32,6 @@ const cambiarFuente = (nuevaFuente: string): void => {
   fuenteSeleccionada.value = nuevaFuente;
   document.documentElement.style.setProperty('--font-family-main', nuevaFuente);
 };
-
-// ==========================================
 
 // ==========================================
 // MECANISMO DE ACTUALIZACIONES AUTOMÁTICAS
@@ -67,7 +69,6 @@ const aplicarActualizacion = async () => {
   estadoActualizacion.value = 'actualizando';
   try {
     await actualizacionPendiente.downloadAndInstall();
-
     await relaunch();
   } catch (error) {
     console.error("Error crítico durante la instalación:", error);
@@ -75,8 +76,6 @@ const aplicarActualizacion = async () => {
     setTimeout(() => estadoActualizacion.value = 'inactivo', 5000);
   }
 };
-
-// ==========================================
 
 // ==========================================
 // 1. ESTADO REACTIVO Y CONTEXTO
@@ -92,7 +91,7 @@ const nombreArchivoActual = ref("");
 const contenidoArchivoActual = ref("");
 const mostrarModalArchivo = ref(false);
 const mostrarConfiguracion = ref(false);
-const tabActivaConfig = ref<'apariencia' | 'motor' | 'actualizaciones' | 'acerca'>('apariencia');
+const tabActivaConfig = ref<'apariencia' | 'motor' | 'acerca' | 'actualizaciones' | 'cerebro'>('apariencia');
 
 const estadoConexion = ref<'conectando' | 'conectado' | 'desconectado'>('conectando');
 
@@ -103,7 +102,6 @@ const limpiarArchivoActual = () => {
   nombreArchivoActual.value = "";
   contenidoArchivoActual.value = "";
 };
-
 
 interface Mensaje {
   role: string;
@@ -219,6 +217,94 @@ General: comandos nativos del sistema operativo
 Evita herramientas obsoletas o en desuso.
 
 =====================================================================
+REGLAS DEL JSON Y ACCIONES DE ESCRITURA
+=====================================================================
+1. Para comandos y lectura, usa JSON válido SIEMPRE.
+2. Sin markdown dentro del JSON.
+3. Si no hay comandos: "comandos_powershell": []
+4. Si no hay archivos para leer: "leer_archivo": null
+5. PARA CREAR NOTAS EN OBSIDIAN: ESTÁ ESTRICTAMENTE PROHIBIDO USAR JSON.
+Si necesitas crear o guardar una nota, debes usar este formato de etiquetas XML FUERA del JSON.
+REGLA CRÍTICA DE ESTRUCTURA: Dentro del contenido, debes usar Wikilinks de Obsidian ([[Nombre del concepto]]) para hipervincular palabras clave importantes. Esto creará la red neuronal del conocimiento. NUNCA crees notas aisladas sin al menos 2 wikilinks a otros conceptos.
+
+<crear_nota titulo="nombre-del-archivo.md">
+# Título de la nota
+El concepto principal se relaciona con el [[Desarrollo Local]] y la [[Privacidad de Datos]]...
+</crear_nota>
+
+=====================================================================
+ROL: ARQUITECTO DE CONOCIMIENTO PKM Y SEGUNDO CEREBRO (OBSIDIAN)
+=====================================================================
+Eres un experto en gestión del conocimiento. Tu misión es construir una bóveda atómica, conectada y escalable.
+
+Para interactuar con la bóveda, TIENES ESTRICTAMENTE PROHIBIDO usar JSON. DEBES usar EXCLUSIVAMENTE estas etiquetas XML:
+
+1. LECTURA Y RAG (BÚSQUEDA ANTES DE RESPONDER):
+Si el usuario pregunta por información, conceptos o proyectos, DEBES buscar en el disco duro ANTES de responder usando:
+<buscar_boveda query="palabra_clave"></buscar_boveda>
+- NUNCA pidas la palabra clave al usuario. Dedúcela tú mismo.
+- NO escribas ningún otro texto cuando uses esta etiqueta.
+
+2. CREACIÓN DE NOTAS:
+Si debes registrar conocimiento nuevo:
+<crear_nota titulo="nombre-del-archivo.md">
+# Título de la nota
+Contenido estructurado. OBLIGATORIO conectar los conceptos clave usando [[Wikilinks]].
+</crear_nota>
+
+3. EDICIÓN DE NOTAS:
+Si debes actualizar, refactorizar o corregir una nota existente:
+<modificar_nota titulo="nombre-del-archivo.md">
+# Contenido nuevo o actualizado, manteniendo los [[Wikilinks]]
+</modificar_nota>
+
+REGLAS DE ORO DEL ARQUITECTO:
+- ATOMICIDAD: Cada nota debe tratar una idea única.
+- CONECTIVIDAD: Nunca dejes una nota como una "isla". Usa siempre [[Wikilinks]] para tejer la red neuronal.
+- PROACTIVIDAD: Si el usuario te da texto desordenado, divídelo en notas atómicas y conéctalas automáticamente sin pedir permiso.
+
+=====================================================================
+PROTOCOLO TÉCNICO (OBLIGATORIO)
+=====================================================================
+1. CREACIÓN: Si debes crear una nota, usa estrictamente el formato XML:
+<crear_nota titulo="nombre-del-archivo.md">
+# Título
+## Resumen
+## Contenido (usa [[Wikilinks]] para conceptos clave)
+## Conceptos Relacionados
+</crear_nota>
+
+2. EDICIÓN: Si debes actualizar una nota, usa:
+<modificar_nota titulo="nombre-del-archivo.md">
+[Nuevo contenido]
+</modificar_nota>
+
+3. INVESTIGACIÓN: Si necesitas contexto, usa:
+<buscar_boveda query="palabra clave"></buscar_boveda>
+
+=====================================================================
+REGLAS DE ARQUITECTURA DE CONOCIMIENTO
+=====================================================================
+- ATOMICIDAD: Cada nota debe abordar una idea única. Si un tema es complejo, divídelo en varias notas vinculadas.
+- CONECTIVIDAD: Usa [[Wikilinks]] para conectar conceptos. Nunca dejes una nota como una "isla" sin al menos 2 enlaces hacia otros temas.
+- ESTRUCTURA: Usa siempre encabezados jerárquicos (#, ##) y listas de tareas Markdown ([- [ ]]).
+- MOCs (Maps of Content): Sugiere al usuario crear índices cuando una carpeta o tema crezca demasiado.
+
+=====================================================================
+MODOS DE OPERACIÓN
+=====================================================================
+- ORGANIZACIÓN: Si el usuario te da texto desordenado, extráelo, clasifícalo en conceptos clave y propón cómo dividirlo en notas atómicas conectadas.
+- ESTUDIO: Genera notas de aprendizaje, conceptos clave y preguntas de reflexión integradas.
+- PROYECTOS: Gestiona objetivos mediante tareas Markdown ([- [ ]]).
+
+=====================================================================
+RESTRICCIONES
+=====================================================================
+- NO inventes datos. Si la información no está en la bóveda, usa <buscar_boveda> o admite que falta contexto.
+- Sé preciso, organizado y prioriza la claridad.
+- Piensa siempre: "¿Cómo facilitará este formato que el usuario encuentre esta información dentro de un año?"
+
+=====================================================================
 COMUNICACIÓN
 =====================================================================
 
@@ -240,7 +326,6 @@ FILOSOFÍA DE HERRAMIENTAS NATIVAS
 =====================================================================
 
 Para obtener información del sistema o web, prioriza comandos nativos del sistema operativo.
-
 NO instales módulos de terceros a menos que el usuario lo solicite explícitamente.
 
 Ejemplos:
@@ -367,10 +452,21 @@ const MEMORIA_INICIAL = [
   {
     role: "assistant",
     content: "Consultando el clima actual a través de la terminal.\n\n```powershell\nInvoke-RestMethod -Uri 'wttr.in/Santiago?format=3'\n```"
-  }
+  },
+  // =================================================================
+  // INYECCIÓN DE ENTRENAMIENTO (FEW-SHOT PROMPTING PARA BÚSQUEDA RAG)
+  // =================================================================
+  { role: "user", content: "¿Cuál es el objetivo del Proyecto Omega según mis apuntes?" },
+  { role: "assistant", content: "<buscar_boveda query=\"Proyecto Omega\"></buscar_boveda>" },
+  { role: "system", content: "RESULTADOS DEL DISCO DURO PARA \"Proyecto Omega\":\n\n--- NOTA: proyectos_activos.md ---\nEl Proyecto Omega busca optimizar el rendimiento de la base de datos centralizando las consultas en un solo hilo." },
+  { role: "assistant", content: "El objetivo del Proyecto Omega, según tus notas, es optimizar el rendimiento de la base de datos mediante la centralización de las consultas en un solo hilo." }
 ];
 
 let memoriaIA = [...MEMORIA_INICIAL];
+
+// =================================================================
+// 2. PROCESAMIENTO DE RESPUESTAS DE LA IA, INTERCEPTORS RAG Y OBSIDIAN, MÉTRICAS, FORMATEO FINAL
+// =================================================================
 
 async function procesarRespuestaIA() {
   estaPensando.value = true;
@@ -380,22 +476,16 @@ async function procesarRespuestaIA() {
       messages: memoriaIA
     });
 
-    const contenidoIA = respuestaFull.message?.content || "";
+    let contenidoIA = respuestaFull.message?.content || "";
+
+    // Reservamos el índice actual del historial
+    const indiceActual = historial.value.length;
+
+    // Métricas
     const pTokens = respuestaFull.prompt_eval_count || 0;
     const rTokens = respuestaFull.eval_count || 0;
     const tDuration = respuestaFull.total_duration || 0;
     const eDuration = respuestaFull.eval_duration || 0;
-
-    // 2. PREPARAMOS EL MENSAJE
-    const indiceActual = historial.value.length;
-    historial.value.push({
-      role: "AINZ CORE",
-      content: contenidoIA,
-      color: "#a78bfa",
-      isStreaming: false
-    });
-
-    memoriaIA.push({ role: "assistant", content: contenidoIA });
 
     const acumuladoPromptPrevio = metricasActuales.value ? metricasActuales.value.promptAcumulados : 0;
     const acumuladoResponsePrevio = metricasActuales.value ? metricasActuales.value.responseAcumulados : 0;
@@ -411,24 +501,137 @@ async function procesarRespuestaIA() {
       totalAcumulados: (acumuladoPromptPrevio + pTokens) + (acumuladoResponsePrevio + rTokens)
     };
 
-    let jsonIA;
-    let textoHuerfano = "";
-    let jsonRoto = false;
+    // ==========================================
+    // INTERCEPTOR 1: BÚSQUEDA RAG (LECTURA)
+    // ==========================================
+    const regexBuscar = /<buscar_boveda\s+query=["']([^"']+)["'][^>]*>[\s\S]*?(?:<\/buscar_boveda>)?/gi;
+    let matchBuscar = regexBuscar.exec(contenidoIA);
 
-    try {
-      const jsonMatch = contenidoIA.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
+    if (matchBuscar) {
+      const terminoBusqueda = matchBuscar[1];
+
+      // Mostramos indicador temporal
+      historial.value.push({
+        role: "AINZ CORE",
+        content: `🔍 *Analizando Bóveda neuronal en busca de: "${terminoBusqueda}"...*`,
+        color: "#e0af68",
+        isStreaming: false
+      });
+
+      const resultadosContexto = await buscarEnBoveda(terminoBusqueda);
+
+      memoriaIA.push({ role: "assistant", content: matchBuscar[0] });
+      memoriaIA.push({
+        role: "system",
+        content: `RESULTADOS DEL DISCO DURO PARA "${terminoBusqueda}":\n\n${resultadosContexto}\n\nREGLA: Responde a la pregunta original del usuario basándote EXCLUSIVAMENTE en esta información encontrada en sus notas. Sé directo.`
+      });
+
+      const respuestaSecundaria: any = await invoke("enviar_chat_rust", {
+        model: modeloSeleccionado.value,
+        messages: memoriaIA
+      });
+
+      contenidoIA = respuestaSecundaria.message?.content || "";
+    } else {
+      // Si no hay búsqueda, creamos un espacio temporal normal
+      historial.value.push({
+        role: "AINZ CORE",
+        content: "Procesando respuesta...",
+        color: "#a78bfa",
+        isStreaming: true
+      });
+    }
+
+    // Guardamos la respuesta cruda en la memoria del modelo
+    memoriaIA.push({ role: "assistant", content: contenidoIA });
+
+    let logObsidian = "";
+
+    // ==========================================
+    // INTERCEPTOR 2: CREACIÓN DE NOTAS (ESCRITURA)
+    // ==========================================
+    const regexXML = /<crear_nota\s+titulo=["']([^"']+)["']>([\s\S]*?)<\/crear_nota>/gi;
+    let matchXML;
+
+    while ((matchXML = regexXML.exec(contenidoIA)) !== null) {
+      const tituloNota = matchXML[1];
+      const contenidoNota = matchXML[2].trim();
+
+      if (!rutaBoveda.value) {
+        logObsidian += `\n\n⚠️ **SISTEMA:** La IA intentó crear \`${tituloNota}\`, pero no hay bóveda vinculada.`;
+      } else {
+        try {
+          let nombreArchivo = tituloNota.endsWith('.md') ? tituloNota : tituloNota + '.md';
+          const rutaCompleta = await join(rutaBoveda.value, nombreArchivo);
+          await writeTextFile(rutaCompleta, contenidoNota);
+
+          logObsidian += `\n\n✅ **NODO CREADO EN OBSIDIAN:** \`${nombreArchivo}\` guardado con éxito.`;
+          await indexarNotas(rutaBoveda.value);
+        } catch (error) {
+          logObsidian += `\n\n❌ **ERROR AL ESCRIBIR NOTA:** \`${tituloNota}\` - ${error}`;
+        }
+      }
+      contenidoIA = contenidoIA.replace(matchXML[0], ''); // Limpieza
+    }
+
+    // ==========================================
+    // INTERCEPTOR 3: MODIFICACIÓN DE NOTAS (EDICIÓN)
+    // ==========================================
+    const regexModificar = /<modificar_nota\s+titulo=["']([^"']+)["']>([\s\S]*?)<\/modificar_nota>/gi;
+    let matchMod;
+
+    while ((matchMod = regexModificar.exec(contenidoIA)) !== null) {
+      const tituloNota = matchMod[1];
+      const nuevoContenido = matchMod[2].trim();
+
+      if (!rutaBoveda.value) {
+        logObsidian += `\n\n⚠️ **SISTEMA:** La IA intentó modificar \`${tituloNota}\`, pero no hay bóveda vinculada.`;
+      } else {
+        try {
+          const nombreArchivo = tituloNota.endsWith('.md') ? tituloNota : tituloNota + '.md';
+          const rutaCompleta = await join(rutaBoveda.value, nombreArchivo);
+
+          // Sobrescribimos el archivo con el nuevo contenido
+          await writeTextFile(rutaCompleta, nuevoContenido);
+
+          logObsidian += `\n\n📝 **NODO ACTUALIZADO EN OBSIDIAN:** \`${nombreArchivo}\` modificado con éxito.`;
+          await indexarNotas(rutaBoveda.value);
+        } catch (error) {
+          logObsidian += `\n\n❌ **ERROR AL MODIFICAR NOTA:** \`${tituloNota}\` - ${error}`;
+        }
+      }
+      contenidoIA = contenidoIA.replace(matchMod[0], ''); // Limpieza
+    }
+
+    // ==========================================
+    // INTERCEPTOR 4: COMANDOS POWERSHELL (JSON)
+    // ==========================================
+    let jsonIA: any = { mensaje_ia: contenidoIA.trim(), comandos_powershell: [], leer_archivo: "" };
+    let jsonRoto = false;
+    let textoAnalisis = "";
+    let textoHuerfano = "";
+
+    const jsonMatch = contenidoIA.match(/\{[\s\S]*\}/);
+
+    if (jsonMatch) {
+      try {
         jsonIA = JSON.parse(jsonMatch[0]);
         textoHuerfano = contenidoIA.replace(jsonMatch[0], '').trim();
         textoHuerfano = textoHuerfano.replace(/```json/gi, "").trim();
-      } else throw new Error("No JSON");
-    } catch (e) {
-      jsonRoto = true;
-      jsonIA = { mensaje_ia: contenidoIA.trim(), comandos_powershell: [], leer_archivo: "" };
+        textoAnalisis = jsonIA.mensaje_ia || "";
+      } catch (e) {
+        jsonRoto = true;
+        textoAnalisis = contenidoIA.trim();
+      }
+    } else {
+      textoAnalisis = contenidoIA.trim();
     }
 
-    let textoAnalisis = jsonIA.mensaje_ia || "";
+    // ==========================================
+    // PREPARACIÓN FINAL DE LA INTERFAZ
+    // ==========================================
     if (textoHuerfano) textoAnalisis += `\n\n${textoHuerfano}`;
+    if (logObsidian) textoAnalisis += logObsidian;
 
     for (const key in jsonIA) {
       if (!["mensaje_ia", "comandos_powershell", "leer_archivo"].includes(key)) {
@@ -439,6 +642,7 @@ async function procesarRespuestaIA() {
       }
     }
 
+    // Sobrescribimos el índice que habíamos reservado con la respuesta final y logs
     historial.value[indiceActual] = {
       role: "AINZ CORE",
       content: textoAnalisis,
@@ -450,7 +654,6 @@ async function procesarRespuestaIA() {
     };
 
     guardarEnLocalStorage();
-
     await hacerScrollHaciaAbajo();
 
   } catch (error: any) {
@@ -465,7 +668,7 @@ async function procesarRespuestaIA() {
 }
 
 // ==========================================
-// 3. INTERACCIÓN DEL USUARIO
+// 3. ENVÍO DE MENSAJES DEL USUARIO Y ACTUALIZACIÓN DE HISTORIAL
 // ==========================================
 async function enviarMensaje() {
   const texto = inputUsuario.value.trim();
@@ -479,7 +682,6 @@ async function enviarMensaje() {
   historial.value.push({ role: "TÚ", content: texto, color: "#38bdf8" });
   memoriaIA.push({ role: "user", content: texto });
 
-
   inputUsuario.value = "";
 
   if (textareaRef.value) {
@@ -487,7 +689,6 @@ async function enviarMensaje() {
   }
 
   await hacerScrollHaciaAbajo(true);
-
   await procesarRespuestaIA();
   guardarEnLocalStorage();
 }
@@ -500,13 +701,10 @@ async function ejecutarComando(comando: string, indexMensaje: number) {
   try {
     const res = await invoke("ejecutar_powershell", { comando: comando, cwd: directorioActual.value });
     historial.value[indexMensaje].resultado = `ÉXITO:\n${res}`;
-
     memoriaIA.push({ role: "user", content: `Resultado del comando '${comando}':\n${res}` });
     await procesarRespuestaIA();
-
   } catch (error) {
     historial.value[indexMensaje].resultado = `ERROR:\n${error}`;
-
     memoriaIA.push({ role: "user", content: `El comando '${comando}' falló con este error:\n${error}\nProporciona una solución o el comando corregido.` });
     await procesarRespuestaIA();
   }
@@ -520,10 +718,8 @@ async function ejecutarLecturaArchivo(ruta: string, indexMensaje: number) {
   try {
     const res = await invoke("leer_archivo_local", { ruta: ruta });
     historial.value[indexMensaje].resultado = `CONTENIDO DE [${ruta}]:\n\n${res}`;
-
     memoriaIA.push({ role: "user", content: `Aquí tienes el contenido leído de ${ruta}:\n\n${res}\n\nAnaliza este código detalladamente de forma proactiva.` });
     await procesarRespuestaIA();
-
   } catch (error) {
     historial.value[indexMensaje].resultado = `ERROR DE LECTURA:\n${error}`;
     memoriaIA.push({ role: "user", content: `Falló la lectura de ${ruta} con error: ${error}` });
@@ -531,11 +727,14 @@ async function ejecutarLecturaArchivo(ruta: string, indexMensaje: number) {
   }
 }
 
+// =================================================================
+// 6. FUNCIONES AUXILIARES: OBTENER MODELOS, VERIFICAR CONEXIÓN, ACTUALIZAR LISTA
+// =================================================================
+
 const obtenerModelos = async () => {
   estadoConexion.value = 'conectando';
   try {
     const respuestaCruda: string = await invoke("obtener_modelos_rust");
-
     const datos = JSON.parse(respuestaCruda);
     modelos.value = datos.models.map((m: any) => m.name);
 
@@ -550,7 +749,6 @@ const obtenerModelos = async () => {
     modelos.value = ["⚠️ Ollama Desconectado"];
     modeloSeleccionado.value = "⚠️ Ollama Desconectado";
     estadoConexion.value = 'desconectado';
-
     historial.value.push({
       role: "SISTEMA",
       content: "❌ Motor de IA inalcanzable. Rust no pudo encontrar el servicio de Ollama en el puerto 11434.",
@@ -559,10 +757,18 @@ const obtenerModelos = async () => {
   }
 };
 
+// =================================================================
+// 7. FUNCIONES AUXILIARES: RECONEXIÓN, REINTENTOS, FALLBACKS
+// =================================================================
+
 const reconectarOllama = async () => {
   if (estadoConexion.value === 'conectando') return;
   await obtenerModelos();
 };
+
+// =================================================================
+// 8. FUNCIONES AUXILIARES: CAMBIO DE TEMA, PERSONALIZACIÓN, GUARDADO EN LOCALSTORAGE
+// =================================================================
 
 const temasDisponibles = [
   { id: 'theme-tokyo', nombre: 'Tokyo Night', color: 'var(--accent-primary)' },
@@ -578,8 +784,11 @@ const cambiarTema = (id: string) => {
   localStorage.setItem("ainz_core_tema", id);
 };
 
-onMounted(async () => {
+// =================================================================
+// 9. CICLO DE VIDA: ONMOUNTED, CARGA DE TEMAS, DIRECTORIO, MODELOS, MOTOR PDF, MARKED
+// =================================================================
 
+onMounted(async () => {
   const temaGuardado = localStorage.getItem("ainz_core_tema");
   if (temaGuardado) temaActual.value = temaGuardado;
 
@@ -594,12 +803,11 @@ onMounted(async () => {
   obtenerModelos();
   cargarDeLocalStorage();
 
-
   if (!(window as any).pdfjsLib) {
     const script = document.createElement("script");
-    script.src = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js";
+    script.src = "[https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js](https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js)";
     script.onload = () => {
-      (window as any).pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js";
+      (window as any).pdfjsLib.GlobalWorkerOptions.workerSrc = "[https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js](https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js)";
       console.log("Motor de extracción de PDFs cargado e inyectado correctamente.");
     };
     document.head.appendChild(script);
@@ -607,10 +815,9 @@ onMounted(async () => {
 
   if (!(window as any).marked) {
     const script = document.createElement("script");
-    script.src = "https://cdn.jsdelivr.net/npm/marked/marked.min.js";
+    script.src = "[https://cdn.jsdelivr.net/npm/marked/marked.min.js](https://cdn.jsdelivr.net/npm/marked/marked.min.js)";
     document.head.appendChild(script);
   }
-
 });
 
 const renderizarMarkdown = (texto: string) => {
@@ -621,7 +828,6 @@ const renderizarMarkdown = (texto: string) => {
 };
 
 import { getCurrentWindow } from "@tauri-apps/api/window";
-
 const appWindow = getCurrentWindow();
 
 const minimizarVentana = async () => {
@@ -635,7 +841,6 @@ const cerrarVentana = async () => {
 const expulsarArchivoMemoria = () => {
   if (!nombreArchivoActual.value) return;
   const nombre = nombreArchivoActual.value;
-
   memoriaIA = memoriaIA.filter(m => !m.content.includes(`[${nombre}]`));
 
   historial.value.push({
@@ -643,10 +848,8 @@ const expulsarArchivoMemoria = () => {
     content: `El archivo "${nombre}" ha sido purgado de la memoria RAM del modelo. Tu ventana de contexto está libre.`,
     color: "#f7768e"
   });
-
   limpiarArchivoActual();
 };
-
 
 const manejarArchivo = async (event: any) => {
   const target = event.target as HTMLInputElement;
@@ -658,8 +861,6 @@ const manejarArchivo = async (event: any) => {
   }
 
   const nombre = file.name;
-  console.log("Archivo detectado:", nombre);
-
   const extension = nombre.split('.').pop()?.toLowerCase() || '';
   nombreArchivoActual.value = nombre;
 
@@ -673,26 +874,21 @@ const manejarArchivo = async (event: any) => {
     reader.onload = async (e) => {
       const contenido = e.target?.result as string;
       contenidoArchivoActual.value = contenido;
-
       memoriaIA.push({
         role: "user",
         content: `He cargado el archivo [${nombre}]. Su contenido es el siguiente:\n\n${contenido}\n\nActúa de forma proactiva: Haz un análisis técnico muy breve de lo que hace este archivo, identifica su propósito principal y confirma que lo tienes en memoria listo para responder preguntas.`
       });
-
       historial.value.push({
         role: "TÚ",
         content: `[Subida de Archivo] Analiza el código de ${nombre} en tiempo real.`,
         color: "#38bdf8"
       });
-
       await procesarRespuestaIA();
     };
     reader.readAsText(file);
   }
-
   else if (extension === 'pdf') {
     contenidoArchivoActual.value = "[Iniciando extracción de texto del PDF...]";
-
     historial.value.push({
       role: "SISTEMA",
       content: `Extrayendo capas de texto del documento: "${nombre}"...`,
@@ -713,10 +909,8 @@ const manejarArchivo = async (event: any) => {
     reader.onload = async (e) => {
       try {
         const arrayBuffer = e.target?.result as ArrayBuffer;
-
         const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
         const pdf = await loadingTask.promise;
-
         let textoCompletoPdf = "";
 
         for (let i = 1; i <= pdf.numPages; i++) {
@@ -731,18 +925,15 @@ const manejarArchivo = async (event: any) => {
         }
 
         contenidoArchivoActual.value = textoCompletoPdf;
-
         memoriaIA.push({
           role: "user",
           content: `He cargado el documento estructurado [${nombre}]. El texto real extraído directamente de sus páginas es el siguiente:\n\n${textoCompletoPdf}\n\nAnaliza este contenido detalladamente, asimila sus conceptos y confirma que estás listo para responder resúmenes o preguntas específicas.`
         });
-
         historial.value.push({
           role: "TÚ",
           content: `[Documento Cargado] Analiza el contenido del PDF "${nombre}" en tiempo real.`,
           color: "#38bdf8"
         });
-
         await procesarRespuestaIA();
 
       } catch (error: any) {
@@ -754,13 +945,9 @@ const manejarArchivo = async (event: any) => {
         });
         limpiarArchivoActual();
       }
-
-
     };
-
     reader.readAsArrayBuffer(file);
   }
-
   else {
     historial.value.push({
       role: "SISTEMA",
@@ -773,13 +960,12 @@ const manejarArchivo = async (event: any) => {
 
 const fileInput = ref<HTMLInputElement | null>(null);
 
-
 // ==========================================
 // CONTROL DE SESIÓN (FASE 1)
 // ==========================================
 const limpiarChat = () => {
   historial.value = [{ role: "SISTEMA", content: "La memoria del agente ha sido purgada. Nueva sesión iniciada.", color: "var(--accent-primary)" }];
-  memoriaIA = [...MEMORIA_INICIAL];;
+  memoriaIA = [...MEMORIA_INICIAL];
   limpiarArchivoActual();
 
   const chatActual = listaChats.value.find(c => c.id === idChatActivo.value);
@@ -799,6 +985,7 @@ interface ChatSession {
   memoriaIA: any[];
   nombreArchivoActual: string;
   contenidoArchivoActual: string;
+  metricas?: MetricasOllama;
 }
 
 const sincronizarChatActual = () => {
@@ -808,8 +995,7 @@ const sincronizarChatActual = () => {
     chat.memoriaIA = memoriaIA;
     chat.nombreArchivoActual = nombreArchivoActual.value;
     chat.contenidoArchivoActual = contenidoArchivoActual.value;
-    chat.metricas = metricasActuales.value ? { ...metricasActuales.value } : undefined; //
-
+    chat.metricas = metricasActuales.value ? { ...metricasActuales.value } : undefined;
   }
 };
 
@@ -847,7 +1033,6 @@ const crearNuevoChat = (titulo = "Nuevo Chat") => {
 
 const seleccionarChat = (id: string) => {
   if (id === idChatActivo.value) return;
-
   sincronizarChatActual();
 
   const chat = listaChats.value.find(c => c.id === id);
@@ -858,15 +1043,12 @@ const seleccionarChat = (id: string) => {
     nombreArchivoActual.value = chat.nombreArchivoActual;
     contenidoArchivoActual.value = chat.contenidoArchivoActual;
     metricasActuales.value = chat.metricas ? { ...chat.metricas } : null;
-
-
     localStorage.setItem("ainz_core_activo", id);
   }
 };
 
 const eliminarChat = (id: string, event: Event) => {
   event.stopPropagation();
-
   listaChats.value = listaChats.value.filter(c => c.id !== id);
 
   if (idChatActivo.value === id) {
@@ -905,7 +1087,6 @@ const cargarDeLocalStorage = () => {
   }
 };
 
-
 // ==========================================
 // CONTROL DE MÚLTIPLES CHATS Y MÉTRICAS
 // ==========================================
@@ -918,16 +1099,6 @@ interface MetricasOllama {
   promptAcumulados: number;
   responseAcumulados: number;
   totalAcumulados: number;
-}
-
-interface ChatSession {
-  id: string;
-  titulo: string;
-  historial: Mensaje[];
-  memoriaIA: any[];
-  nombreArchivoActual: string;
-  contenidoArchivoActual: string;
-  metricas?: MetricasOllama; //
 }
 
 const listaChats = ref<ChatSession[]>([]);
@@ -946,9 +1117,7 @@ const toggleDictado = () => {
     return;
   }
 
-
   const APIReconocimiento = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-
   if (!APIReconocimiento) {
     historial.value.push({
       role: "SISTEMA",
@@ -971,7 +1140,6 @@ const toggleDictado = () => {
     const transcripcion = Array.from(evento.results)
       .map((resultado: any) => resultado[0].transcript)
       .join('');
-
     inputUsuario.value = transcripcion;
   };
 
@@ -1036,7 +1204,6 @@ const textareaRef = ref<HTMLTextAreaElement | null>(null);
 const ajustarAltura = () => {
   const el = textareaRef.value;
   if (!el) return;
-
   el.style.height = 'auto';
   el.style.height = `${el.scrollHeight}px`;
 };
@@ -1047,17 +1214,14 @@ const ajustarAltura = () => {
 const verificarPosicionScroll = () => {
   const el = viewportRef.value;
   if (!el) return;
-
   const distanciaAlFondo = el.scrollHeight - el.scrollTop - el.clientHeight;
   usuarioSubioScroll.value = distanciaAlFondo > 100;
 };
 
 const hacerScrollHaciaAbajo = async (forzar = false) => {
   await nextTick();
-
   const el = viewportRef.value;
   if (!el) return;
-
   if (forzar || !usuarioSubioScroll.value) {
     el.scrollTo({
       top: el.scrollHeight,
@@ -1067,7 +1231,6 @@ const hacerScrollHaciaAbajo = async (forzar = false) => {
 };
 
 import { getVersion } from '@tauri-apps/api/app';
-
 const appVersion = ref('Cargando...');
 
 onMounted(async () => {
@@ -1079,8 +1242,117 @@ onMounted(async () => {
   }
 });
 
+// ==========================================
+// FUNCIONES DE VINCULACIÓN E INDEXACIÓN DE BÓVEDA DE OBSIDIAN
+// ==========================================
+const rutaBoveda = ref<string | null>(null);
+const notasCargadas = ref<DirEntry[]>([]);
+let intervaloIndexacion: ReturnType<typeof setInterval> | null = null;
+
+const iniciarObservadorBoveda = () => {
+  // 1. Limpiamos cualquier intervalo previo para evitar fugas de memoria (Memory Leaks)
+  if (intervaloIndexacion) clearInterval(intervaloIndexacion);
+
+  // 2. Configuramos un chequeo de bajo impacto cada 5 segundos (5000 ms)
+  intervaloIndexacion = setInterval(async () => {
+    if (rutaBoveda.value) {
+      try {
+        const entradas = await readDir(rutaBoveda.value);
+        const nuevasNotas = entradas.filter((entrada: DirEntry) =>
+          entrada.isFile && entrada.name.endsWith('.md')
+        );
+
+        // 3. Smart Polling: Solo actualizamos la variable reactiva si la cantidad REALMENTE cambió.
+        // Esto evita que Vue vuelva a renderizar el DOM y consuma memoria innecesaria.
+        if (nuevasNotas.length !== notasCargadas.value.length) {
+          notasCargadas.value = nuevasNotas;
+          console.log(`[Observador] Cambio detectado. Nuevos nodos indexados: ${nuevasNotas.length}`);
+        }
+      } catch (error) {
+        console.error("Fallo de I/O en el observador de fondo:", error);
+      }
+    }
+  }, 5000);
+};
 
 
+onMounted(async () => {
+  const bovedaGuardada = localStorage.getItem('ainz_boveda_path');
+  if (bovedaGuardada) {
+    console.log("Cargando bóveda guardada desde:", bovedaGuardada);
+    rutaBoveda.value = bovedaGuardada;
+    await indexarNotas(bovedaGuardada);
+    iniciarObservadorBoveda(); // Iniciamos el observador silencioso al cargar la app
+  }
+});
+
+const vincularBoveda = async (): Promise<void> => {
+  try {
+    const seleccion = await open({
+      directory: true,
+      multiple: false,
+      title: 'Selecciona la carpeta raíz de Obsidian'
+    });
+
+    if (typeof seleccion === 'string') {
+      rutaBoveda.value = seleccion;
+      localStorage.setItem('ainz_boveda_path', seleccion);
+      await indexarNotas(seleccion);
+    }
+  } catch (error) {
+    console.error("Error crítico al invocar el diálogo del sistema:", error);
+  }
+};
+
+const indexarNotas = async (ruta: string): Promise<void> => {
+  try {
+    const entradas = await readDir(ruta);
+    notasCargadas.value = entradas.filter((entrada: DirEntry) =>
+      entrada.isFile && entrada.name.endsWith('.md')
+    );
+    console.log(`Bóveda vinculada con éxito. ${notasCargadas.value.length} nodos detectados.`);
+  } catch (error) {
+    console.error("Fallo de I/O al escanear la bóveda:", error);
+    rutaBoveda.value = null;
+  }
+};
+
+// ==========================================
+// MOTOR DE BÚSQUEDA DEL SEGUNDO CEREBRO (RAG)
+// ==========================================
+const buscarEnBoveda = async (query: string): Promise<string> => {
+  if (!rutaBoveda.value) return "Error: No hay una bóveda de Obsidian vinculada.";
+  try {
+    const entradas = await readDir(rutaBoveda.value);
+    const archivosMd = entradas.filter(e => e.isFile && e.name.endsWith('.md'));
+    let resultadosObtenidos = [];
+
+    for (const archivo of archivosMd) {
+      const rutaCompleta = await join(rutaBoveda.value, archivo.name);
+      const contenido = await readTextFile(rutaCompleta);
+
+      // Búsqueda ampliada: revisa el CONTENIDO y también el TÍTULO del archivo
+      const coincideContenido = contenido.toLowerCase().includes(query.toLowerCase());
+      const coincideTitulo = archivo.name.toLowerCase().includes(query.toLowerCase());
+
+      if (coincideContenido || coincideTitulo) {
+        // Le notificamos a la IA si el archivo existe pero está en blanco
+        let fragmento = contenido.trim() === "" ? "[NOTA VACÍA - 0 BYTES. Lista para ser escrita.]" : contenido;
+        fragmento = fragmento.length > 1500 ? fragmento.substring(0, 1500) + "... [texto truncado]" : fragmento;
+        resultadosObtenidos.push(`--- NOTA: ${archivo.name} ---\n${fragmento}`);
+      }
+    }
+
+    if (resultadosObtenidos.length === 0) {
+      return `No se encontró información sobre "${query}" en la bóveda.`;
+    }
+
+    return resultadosObtenidos.slice(0, 4).join("\n\n");
+  } catch (error) {
+    console.error("Fallo del disco al buscar en la bóveda:", error);
+    return `Error de lectura del disco: ${error}`;
+  }
+};
 
 </script>
 <template>
@@ -1359,6 +1631,9 @@ onMounted(async () => {
             <button :class="{ active: tabActivaConfig === 'motor' }" @click="tabActivaConfig = 'motor'">
               🧠 Motor IA
             </button>
+            <button :class="{ active: tabActivaConfig === 'cerebro' }" @click="tabActivaConfig = 'cerebro'">
+              🧠 Segundo Cerebro
+            </button>
             <button :class="{ active: tabActivaConfig === 'actualizaciones' }"
               @click="tabActivaConfig = 'actualizaciones'">
               🔄 Actualizaciones
@@ -1394,7 +1669,34 @@ onMounted(async () => {
                   </div>
                 </div>
               </div>
+            </div>
 
+            <div v-if="tabActivaConfig === 'cerebro'" class="settings-view">
+              <h4 class="settings-title">Integración con Obsidian</h4>
+              <p class="settings-desc">
+                Vincula tu bóveda local para que Ainz Core pueda leer, razonar y estructurar tus notas de forma privada.
+              </p>
+
+              <div class="connection-card" style="margin-top: 15px;">
+                <div class="connection-status">
+                  <div class="status-dot" :class="rutaBoveda ? 'conectado' : 'desconectado'"></div>
+                  <div>
+                    <div class="status-text">
+                      {{ rutaBoveda ? 'Bóveda Conectada' : 'Bóveda No Vinculada' }}
+                    </div>
+                    <div v-if="rutaBoveda"
+                      style="font-size: 11px; color: var(--text-muted); margin-top: 4px; font-family: var(--font-family-main);">
+                      <strong>Ruta:</strong> {{ rutaBoveda }} <br>
+                      <strong>Nodos indexados:</strong> {{ notasCargadas.length }} archivos .md detectados.
+                    </div>
+                  </div>
+                </div>
+
+                <button class="oc-btn-settings-action" @click="vincularBoveda">
+                  <span v-if="!rutaBoveda">📁 Seleccionar Carpeta</span>
+                  <span v-else>🔄 Cambiar Bóveda</span>
+                </button>
+              </div>
             </div>
 
             <div v-if="tabActivaConfig === 'motor'" class="settings-view">
@@ -1454,6 +1756,8 @@ onMounted(async () => {
               </div>
             </div>
 
+
+
             <div v-if="tabActivaConfig === 'acerca'" class="settings-view">
               <h4 class="settings-title">Acerca de Ainz Core</h4>
               <div style="display: flex; gap: 20px; align-items: center; margin-top: 15px;">
@@ -1492,7 +1796,15 @@ onMounted(async () => {
 </template>
 
 <style scoped>
+/* ==========================================
+IMPORTACIÓN DE FUENTES
+   ========================================== */
+
 @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&display=swap');
+
+/* ==========================================
+RESETEO GLOBAL Y CONFIGURACIÓN DE TIPOGRAFÍA
+   ========================================== */
 
 *,
 *::before,
@@ -1508,11 +1820,11 @@ onMounted(async () => {
   --font-family-main: 'Inter', sans-serif;
 }
 
-body, #app {
+body,
+#app {
   font-family: var(--font-family-main) !important;
 }
 
-/* Esto asegura que todos los elementos internos se "rindan" ante la variable */
 .settings-view * {
   font-family: var(--font-family-main) !important;
 }
@@ -1534,6 +1846,10 @@ body {
   background: transparent;
 
 }
+
+/* ==========================================
+TEMAS DE COLOR PARA LA APLICACIÓN
+   ========================================== */
 
 .opencode-app.theme-tokyo {
   --bg-app: var(--bg-app);
@@ -1664,6 +1980,8 @@ body {
   flex: 1;
 }
 
+
+
 .oc-btn {
   background: transparent;
   color: var(--accent-primary);
@@ -1774,6 +2092,10 @@ body {
     opacity: 0.5;
   }
 }
+
+/* ==========================================
+    ESTILOS DEL HEADER Y CONTROLES DE VENTANA
+   ========================================== */
 
 .oc-header {
   height: 32px;
@@ -2697,5 +3019,4 @@ body {
   border-color: var(--accent-primary);
   background: rgba(100, 149, 237, 0.1);
 }
-
 </style>

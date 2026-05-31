@@ -1,11 +1,11 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+use reqwest::Client;
 use std::os::windows::process::CommandExt;
 use std::time::Duration;
 use tauri::command;
-use reqwest::Client;
 
-// CORRECCIÓN: Unificamos y configuramos el cliente HTTP para evitar cortes 
+// CORRECCIÓN: Unificamos y configuramos el cliente HTTP para evitar cortes
 // de conexión durante la generación prolongada de código/artefactos visuales.
 fn construir_cliente_llm() -> Client {
     Client::builder()
@@ -37,7 +37,11 @@ async fn ejecutar_powershell(comando: String, cwd: String) -> Result<String, Str
             let stdout = String::from_utf8_lossy(&salida.stdout).to_string();
             let stderr = String::from_utf8_lossy(&salida.stderr).to_string();
 
-            if salida.status.success() { Ok(stdout) } else { Err(stderr) }
+            if salida.status.success() {
+                Ok(stdout)
+            } else {
+                Err(stderr)
+            }
         }
         Err(e) => Err(format!("Fallo crítico al invocar el proceso: {}", e)),
     }
@@ -46,7 +50,7 @@ async fn ejecutar_powershell(comando: String, cwd: String) -> Result<String, Str
 #[tauri::command]
 async fn leer_archivo_local(ruta: String) -> Result<String, String> {
     let path = std::path::Path::new(&ruta);
-    
+
     if let Some(ext) = path.extension().and_then(|s| s.to_str()) {
         let ext_lower = ext.to_lowercase();
         if ext_lower == "pdf" || ext_lower == "xlsx" || ext_lower == "docx" || ext_lower == "exe" {
@@ -67,19 +71,26 @@ async fn leer_archivo_local(ruta: String) -> Result<String, String> {
 async fn obtener_modelos_rust() -> Result<String, String> {
     // CORRECCIÓN: Usamos el cliente optimizado
     let client = construir_cliente_llm();
-    
-    let res = client.get("http://127.0.0.1:11434/api/tags")
+
+    let res = client
+        .get("http://127.0.0.1:11434/api/tags")
         .send()
         .await
         .map_err(|err| format!("Fallo al contactar Ollama: {}", err))?;
 
-    let texto_json = res.text().await.map_err(|err| format!("Fallo al leer respuesta: {}", err))?;
-    
+    let texto_json = res
+        .text()
+        .await
+        .map_err(|err| format!("Fallo al leer respuesta: {}", err))?;
+
     Ok(texto_json)
 }
 
 #[command]
-async fn enviar_chat_rust(model: String, messages: Vec<serde_json::Value>) -> Result<serde_json::Value, String> {
+async fn enviar_chat_rust(
+    model: String,
+    messages: Vec<serde_json::Value>,
+) -> Result<serde_json::Value, String> {
     // CORRECCIÓN: Usamos el cliente optimizado con timeout
     let client = construir_cliente_llm();
     let body = serde_json::json!({
@@ -88,14 +99,15 @@ async fn enviar_chat_rust(model: String, messages: Vec<serde_json::Value>) -> Re
         "stream": false // Se mantiene en false para no quebrar la lectura de métricas final
     });
 
-    let res = client.post("http://127.0.0.1:11434/api/chat")
+    let res = client
+        .post("http://127.0.0.1:11434/api/chat")
         .json(&body)
         .send()
         .await
         .map_err(|e| e.to_string())?;
 
     let json_response: serde_json::Value = res.json().await.map_err(|e| e.to_string())?;
-    
+
     Ok(json_response)
 }
 
@@ -109,7 +121,15 @@ fn obtener_directorio_actual() -> Result<String, String> {
 
 fn main() {
     tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![ejecutar_powershell, leer_archivo_local, obtener_modelos_rust, enviar_chat_rust, obtener_directorio_actual])
+        .plugin(tauri_plugin_dialog::init()) // 
+        .plugin(tauri_plugin_fs::init())
+        .invoke_handler(tauri::generate_handler![
+            ejecutar_powershell,
+            leer_archivo_local,
+            obtener_modelos_rust,
+            enviar_chat_rust,
+            obtener_directorio_actual
+        ])
         .run(tauri::generate_context!())
         .expect("Error crítico al iniciar Ainz Core");
 }
