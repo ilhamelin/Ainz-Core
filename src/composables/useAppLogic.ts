@@ -65,6 +65,51 @@ export function useAppLogic() {
   };
 
   // ==========================================
+  // TELEMETRÍA Y COOKBOOK DE MODELOS
+  // ==========================================
+  interface Telemetria {
+    os: string;
+    cpu: string;
+    ram_total_gb: number;
+    ram_libre_gb: number;
+  }
+
+  const telemetriaHardware = ref<Telemetria | null>(null);
+
+  // Nuestra base de datos curada de modelos
+  const catalogoModelos = [
+    { id: "qwen2.5-coder:1.5b", reqRam: 4, params: "1.5B", desc: "Ultraligero. Ideal para máquinas con 8GB de RAM o menos. Rápido pero menos profundo." },
+    { id: "llama3.2:3b", reqRam: 6, params: "3B", desc: "El equilibrio perfecto para portátiles modernos. Razonamiento sólido." },
+    { id: "qwen2.5-coder:7b", reqRam: 8, params: "7B", desc: "Estándar actual. Excelente para tareas de sistema y código." },
+    { id: "llama3:8b", reqRam: 12, params: "8B", desc: "Modelo robusto de uso general. Requiere al menos 16GB de RAM recomendados." },
+    { id: "command-r:35b", reqRam: 24, params: "35B", desc: "Masivo. Nivel experto corporativo. Solo para bestias con 32GB+ de RAM." }
+  ];
+
+  const modelosRecomendados = ref<any[]>([]);
+
+  const escanearHardware = async () => {
+    try {
+      telemetriaHardware.value = await invoke('obtener_telemetria_hardware');
+      if (telemetriaHardware.value) {
+        const ramUsuario = telemetriaHardware.value.ram_total_gb;
+        modelosRecomendados.value = catalogoModelos.map(modelo => ({
+          ...modelo,
+          compatible: ramUsuario >= modelo.reqRam,
+          sugerido: ramUsuario >= modelo.reqRam && ramUsuario < (modelo.reqRam * 2.5)
+        }));
+      }
+    } catch (error) {
+      console.error("Fallo al escanear hardware:", error);
+    }
+  };
+
+  onMounted(async () => {
+    await escanearHardware();
+  });
+
+
+
+  // ==========================================
   // MECANISMO DE ACTUALIZACIONES AUTOMÁTICAS
   // ==========================================
 
@@ -897,7 +942,9 @@ export function useAppLogic() {
     nombreArchivoActual,
     contenidoArchivoActual,
     permisoAccesoGlobal,
-
+    telemetriaHardware,
+    modelosRecomendados,
+  
 
     // Funciones
     enviarMensaje,
@@ -923,6 +970,11 @@ export function useAppLogic() {
     renderizarMarkdown,
     procesarContenido,
     hacerScrollHaciaAbajo,
+    escanearHardware,
+    buscarEnBoveda,
+
+
+
 
 
     // agrega cualquier otra que uses en el template

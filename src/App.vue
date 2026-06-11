@@ -14,6 +14,10 @@ const {
   permisoAccesoGlobal,
   crearNuevoChat,
   idChatActivo,
+  escanearHardware,
+  buscarEnBoveda,
+  telemetriaHardware,
+  modelosRecomendados,
   minimizarVentana,
   cerrarVentana,
   seleccionarChat,
@@ -367,14 +371,19 @@ const {
 
             <div v-if="tabActivaConfig === 'permisos'" class="settings-view">
               <h4 class="settings-title">Acceso Global al Ordenador</h4>
-              <p class="settings-desc">Permite que Ainz-Core ejecute comandos y lea cualquier archivo fuera de su bóveda. Actívalo solo si confías en el modelo local.</p>
-              
+              <p class="settings-desc">Permite que Ainz-Core ejecute comandos y lea cualquier archivo fuera de su
+                bóveda.
+                Actívalo solo si confías en el modelo local.</p>
+
               <div class="connection-card" style="margin-top: 15px;">
                 <label style="display: flex; align-items: center; gap: 15px; cursor: pointer; padding: 10px;">
-                  <input type="checkbox" v-model="permisoAccesoGlobal" style="width: 20px; height: 20px; accent-color: var(--accent-primary);">
+                  <input type="checkbox" v-model="permisoAccesoGlobal"
+                    style="width: 20px; height: 20px; accent-color: var(--accent-primary);">
                   <div style="display: flex; flex-direction: column;">
                     <strong style="color: var(--text-main);">Otorgar acceso total al sistema</strong>
-                    <span style="font-size: 12px; color: var(--text-muted);">Si está desactivado, el agente bloqueará los comandos de consola por seguridad.</span>
+                    <span style="font-size: 12px; color: var(--text-muted);">Si está desactivado, el agente bloqueará
+                      los
+                      comandos de consola por seguridad.</span>
                   </div>
                 </label>
               </div>
@@ -410,23 +419,63 @@ const {
 
             <div v-if="tabActivaConfig === 'motor'" class="settings-view">
               <h4 class="settings-title">Motor de Inteligencia Artificial</h4>
-              <p class="settings-desc">Gestiona la conexión con tu servidor local de Ollama.</p>
+              <p class="settings-desc">Gestiona la conexión con Ollama y revisa las recomendaciones de hardware.</p>
+
               <div class="connection-card">
                 <div class="connection-status">
                   <span class="status-dot" :class="estadoConexion"></span>
                   <span class="status-text">
-                    {{
-                      estadoConexion === 'conectado' ? 'Conectado y escuchando' :
-                        estadoConexion === 'desconectado' ? 'Servidor Inalcanzable' :
-                          'Estableciendo conexión...'
-                    }}
+                    {{ estadoConexion === 'conectado' ? 'Conectado y escuchando' : 'Estableciendo conexión...' }}
                   </span>
                 </div>
                 <button class="oc-btn-settings-action" @click="reconectarOllama"
-                  :disabled="estadoConexion === 'conectando'">
-                  Reconectar
-                </button>
+                  :disabled="estadoConexion === 'conectando'">Reconectar</button>
               </div>
+
+              <div v-if="telemetriaHardware" style="margin-top: 25px;">
+                <h4 class="settings-title">Hardware Detectado</h4>
+                <div class="oc-metric-box row-layout"
+                  style="background: rgba(0,0,0,0.2); padding: 15px; border-radius: 8px;">
+                  <div>
+                    <span class="oc-metric-label">CPU</span>
+                    <span style="color: var(--text-main); font-size: 13px;">{{ telemetriaHardware.cpu }}</span>
+                  </div>
+                  <div>
+                    <span class="oc-metric-label">Memoria RAM Total</span>
+                    <span class="speed-color" style="font-size: 16px; font-weight: bold;">{{
+                      telemetriaHardware.ram_total_gb.toFixed(1) }} GB</span>
+                  </div>
+                </div>
+              </div>
+
+              <div v-if="modelosRecomendados.length > 0" style="margin-top: 25px;">
+                <h4 class="settings-title">Cookbook (Modelos Recomendados)</h4>
+                <p class="settings-desc">Basado en tus {{ telemetriaHardware?.ram_total_gb.toFixed(0) }}GB de RAM, estas
+                  son
+                  las recomendaciones para evitar cuelgues del sistema:</p>
+
+                <div style="display: flex; flex-direction: column; gap: 10px; margin-top: 15px;">
+                  <div v-for="mod in modelosRecomendados" :key="mod.id"
+                    style="padding: 12px; border-radius: 6px; border: 1px solid var(--border-color); display: flex; flex-direction: column; gap: 5px;"
+                    :style="{ opacity: mod.compatible ? '1' : '0.5', borderLeft: mod.sugerido ? '4px solid #9ece6a' : '1px solid var(--border-color)' }">
+
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                      <strong style="color: var(--accent-primary);">{{ mod.id }}</strong>
+                      <span v-if="mod.sugerido"
+                        style="background: #9ece6a; color: #14151a; padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: bold;">IDEAL
+                        PARA TU PC</span>
+                      <span v-if="!mod.compatible"
+                        style="background: #f7768e; color: #14151a; padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: bold;">CUELLO
+                        DE BOTELLA (FALTA RAM)</span>
+                    </div>
+                    <span style="font-size: 12px; color: var(--text-muted);">{{ mod.desc }}</span>
+                    <span style="font-size: 11px; color: #88c0d0;">Parámetros: {{ mod.params }} | Requiere: {{
+                      mod.reqRam
+                      }}GB RAM</span>
+                  </div>
+                </div>
+              </div>
+
             </div>
 
             <div v-if="tabActivaConfig === 'actualizaciones'" class="settings-view">

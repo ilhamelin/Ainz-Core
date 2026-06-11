@@ -3,11 +3,22 @@ use serde::{Deserialize, Serialize};
 use std::os::windows::process::CommandExt;
 use std::time::Duration;
 use tauri::{AppHandle, Emitter};
+use sysinfo::System;
+use std::fs;
+use std::path::PathBuf;
 
 #[derive(Serialize, Deserialize)]
 pub struct MensajeChat {
     pub role: String,
     pub content: String,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct MailConfig {
+    pub email: String,
+    pub token: String,
+    pub imap_server: String,
+    pub smtp_server: String,
 }
 
 // ==========================================
@@ -68,7 +79,19 @@ async fn ejecutar_agente_autonomo(
     --- FORMATO 2: PARA RESPONDER AL USUARIO (FIN DE TAREA) ---
     Thought: Ya ejecuté la herramienta o tengo los datos necesarios.
     Final Answer: [Tu respuesta detallada en Markdown]
+
+    -----------------------------------------------------------------
+
+    - GESTIÓN DE CORREOS: Puedes interactuar con la bandeja del usuario.
+    Action: read_emails
+    Action Input: imap.ejemplo.com|tu_usuario@ejemplo.com|tu_token_o_password
+
+    Action: send_email
+    Action Input: smtp.ejemplo.com|tu_usuario@ejemplo.com|tu_token|destinatario@ejemplo.com|Asunto del correo|Cuerpo del mensaje
+
     -----------------------------------------------------------------"
+
+    
 
     );
 
@@ -106,6 +129,7 @@ async fn ejecutar_agente_autonomo(
         1. ATOMICIDAD Y RED NEURONAL: Nunca crees notas aisladas. Si vas a guardar información, usa siempre [[Wikilinks]] dentro del contenido para conectar la nueva nota con conceptos relacionados.
         2. ESTRUCTURA MD: Toda nota nueva debe usar jerarquía de encabezados (#, ##).
         3. INVESTIGACIÓN ACTIVA (RAG): Si el usuario te pregunta por sus gustos, proyectos pasados o conceptos abstractos, tienes PROHIBIDO responder sin antes usar 'search_vault' para buscar en su memoria.
+        4. AUTO-MEMORIA PROACTIVA (CRÍTICA): Eres un observador silencioso. Si el usuario menciona espontáneamente un gusto personal, una habilidad tecnológica, un dato biográfico o un proyecto en el que está trabajando, TIENES LA OBLIGACIÓN de usar la herramienta 'update_note' o 'create_note' (por ejemplo, en un archivo llamado 'Perfil_Usuario.md') para documentar ese dato en segundo plano ANTES de darle tu 'Final Answer'. No esperes a que te ordene guardar la información.
 
         CATÁLOGO TÁCTICO DE BÓVEDA (Usa SOLO estas herramientas con el formato Action / Action Input):
         - MAPEAR BÓVEDA: 'Action: list_vault' | 'Action Input: none' (Úsalo para ver qué archivos .md existen y evitar duplicados).
@@ -118,6 +142,12 @@ async fn ejecutar_agente_autonomo(
         Thought: Debo buscar en la bóveda antes de responder.
         Action: search_vault
         Action Input: ProyectoX
+
+        >> EJEMPLO DE CREACIÓN DE NOTA:
+        User: Guarda esto en Tareas.md: 'Comprar pan'.
+        Thought: Debo usar la herramienta create_note y poner el contenido inmediatamente después de la barra vertical.
+        Action: create_note
+        Action Input: Tareas.md|Comprar pan
 
         HERRAMIENTAS PERMITIDAS: list_vault, search_vault, create_note.
 
@@ -149,6 +179,8 @@ async fn ejecutar_agente_autonomo(
         .to_string();
 
     println!("\n🤖 Iniciando Agente con modelo: {}", modelo_detectado);
+
+    let mut log_agente = String::new();
 
     loop {
         if iteraciones >= MAX_ITERACIONES {
@@ -194,11 +226,15 @@ async fn ejecutar_agente_autonomo(
 
         println!("🧠 Ollama pensó: \n{}", respuesta_texto);
 
+        log_agente.push_str(&format!("{}\n", respuesta_texto.trim()));
+
         if respuesta_texto.contains("Action: read_file") {
             let ruta = extraer_parametro(&respuesta_texto, "Action Input:");
             let _ = app.emit("agente-estado", format!("~ Leyendo archivo: {}", ruta));
-
             let contenido = leer_archivo_local(ruta).await.unwrap_or_else(|e| e);
+
+            // AÑADE ESTA LÍNEA PARA GUARDAR LA OBSERVACIÓN:
+            log_agente.push_str(&format!("Observation: {}\n\n", contenido));
 
             contexto_actual.push(MensajeChat {
                 role: "assistant".into(),
@@ -367,17 +403,69 @@ async fn ejecutar_agente_autonomo(
             continue;
         }
 
+        // --- INTERCEPTOR: LEER CORREOS ---
+        if respuesta_texto.contains("Action: read_emails") {
+            let input = extraer_parametro(&respuesta_texto, "Action Input:");
+            let partes: Vec<&str> = input.split('|').collect();
+            if partes.len() == 3 {
+                let _ = app.emit("agente-estado", "~ Sincronizando bandeja de entrada...");
+                let res = leer_correos_recientes(partes[0].to_string(), partes[1].to_string(), partes[2].to_string()).await;
+                let obs = match res { Ok(m) => m, Err(e) => format!("Error de red IMAP: {}", e) };
+                contexto_actual.push(MensajeChat { role: "assistant".into(), content: respuesta_texto.clone() });
+                contexto_actual.push(MensajeChat { role: "system".into(), content: format!("Observation: {}", obs) });
+                iteraciones += 1; continue;
+            }
+        }
+
+        // --- INTERCEPTOR: ENVIAR CORREO ---
+        if respuesta_texto.contains("Action: send_email") {
+            let input = extraer_parametro(&respuesta_texto, "Action Input:");
+            let partes: Vec<&str> = input.split('|').collect();
+    
+            // Cambiamos de 6 partes esperadas a solo 3
+            if partes.len() == 3 {
+                let _ = app.emit("agente-estado", "~ Despachando correo electrónico...");
+                
+                // Ahora solo pasamos los 3 parámetros necesarios
+                let res = enviar_correo_smtp(
+                    partes[0].to_string(), // destinatario
+                    partes[1].to_string(), // asunto
+                    partes[2].to_string()  // cuerpo
+                ).await;
+                
+                let obs = match res { Ok(m) => m, Err(e) => format!("Error SMTP: {}", e) };
+                contexto_actual.push(MensajeChat { role: "assistant".into(), content: respuesta_texto.clone() });
+                contexto_actual.push(MensajeChat { role: "system".into(), content: format!("Observation: {}", obs) });
+                iteraciones += 1; continue;
+            } else {
+                // Es vital añadir un mensaje de error si el Agente no sigue el formato de 3 partes
+                let obs = "Error: Formato de Action Input incorrecto. Esperaba 3 parámetros: destinatario|asunto|cuerpo";
+                contexto_actual.push(MensajeChat { role: "system".into(), content: format!("Observation: {}", obs) });
+                iteraciones += 1; continue;
+            }
+        }
+
         if respuesta_texto.contains("Final Answer:") {
             let respuesta_limpia = extraer_parametro(&respuesta_texto, "Final Answer:");
             println!("✅ Respuesta Final enviada a Vue.");
-            return Ok(respuesta_limpia);
+        
+            let respuesta_hibrida = format!(
+                "<details style=\"padding: 10px; background: var(--bg-header); border: 1px solid var(--border-color); border-radius: 6px; margin-bottom: 15px;\">\n<summary style=\"cursor: pointer; color: var(--accent-primary); font-weight: bold;\">⚙️ Ver proceso lógico del agente ({} pasos)</summary>\n<pre style=\"margin-top: 10px; font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--text-muted); white-space: pre-wrap; overflow-x: auto; background: rgba(0,0,0,0.2); padding: 10px; border-radius: 4px;\">\n{}\n</pre>\n</details>\n\n{}", 
+                iteraciones + 1, 
+                log_agente.trim(), 
+                respuesta_limpia
+            );
+            
+            return Ok(respuesta_hibrida);
         }
 
-        println!(
-            "💡 DEDUCCIÓN: El modelo omitió el formato estricto. Enviando texto en crudo a Vue."
+        println!("💡 DEDUCCIÓN: El modelo omitió el formato estricto. Enviando texto en crudo a Vue.");
+        
+        let respuesta_rescatada = format!(
+            "<details style=\"padding: 10px; background: var(--bg-header); border: 1px solid var(--border-color); border-radius: 6px; margin-bottom: 15px;\">\n<summary style=\"cursor: pointer; color: #f7768e; font-weight: bold;\">⚠️ Formato roto (Rescate de log)</summary>\n<pre style=\"margin-top: 10px; font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--text-muted); white-space: pre-wrap; overflow-x: auto; background: rgba(0,0,0,0.2); padding: 10px; border-radius: 4px;\">\n{}\n</pre>\n</details>\n\n{}", 
+            log_agente.trim(), 
+            respuesta_texto.trim()
         );
-
-        let respuesta_rescatada = respuesta_texto.trim().to_string();
         return Ok(respuesta_rescatada);
     }
 }
@@ -385,14 +473,14 @@ async fn ejecutar_agente_autonomo(
 fn extraer_parametro(texto: &str, clave: &str) -> String {
     if let Some(indice) = texto.find(clave) {
         let resto = &texto[indice + clave.len()..];
-        
+
         if clave == "Final Answer:" {
             return resto.trim().to_string();
         }
-        
+
         // El nuevo motor de extracción multi-línea para Action Input
         let mut valor_crudo = resto.trim().to_string();
-        
+
         // Destruimos la envoltura de Markdown si Qwen intenta usarla (común en código)
         valor_crudo = valor_crudo
             .trim_start_matches("```powershell")
@@ -401,13 +489,13 @@ fn extraer_parametro(texto: &str, clave: &str) -> String {
             .trim_start_matches("```")
             .to_string();
         valor_crudo = valor_crudo.trim_end_matches("```").trim().to_string();
-        
+
         // Cortafuegos: Si el modelo alucina y genera la siguiente fase por su cuenta,
         // amputamos el texto ahí para no escribir la palabra "Observation:" en tus notas.
         if let Some(obs_idx) = valor_crudo.find("Observation:") {
             valor_crudo = valor_crudo[..obs_idx].trim().to_string();
         }
-        
+
         return valor_crudo;
     }
     "".to_string()
@@ -500,10 +588,14 @@ async fn enviar_chat_rust(
     messages: Vec<serde_json::Value>,
 ) -> Result<serde_json::Value, String> {
     let client = construir_cliente_llm();
+    
     let body = serde_json::json!({
         "model": model,
         "messages": messages,
-        "stream": false
+        "stream": false,
+        "options": {
+            "stop": ["Observation:"]
+        }
     });
 
     let res = client
@@ -623,7 +715,6 @@ async fn listar_boveda_rust(ruta_boveda: &str) -> String {
 // ==========================================
 
 async fn actualizar_nota_rust(ruta_boveda: &str, input_crudo: &str) -> String {
-    // Formato esperado: NombreDeNota.md|Texto exacto a buscar|Nuevo texto de reemplazo
     let partes: Vec<&str> = input_crudo.splitn(3, '|').collect();
 
     if partes.len() != 3 {
@@ -660,9 +751,9 @@ async fn actualizar_nota_rust(ruta_boveda: &str, input_crudo: &str) -> String {
     }
 }
 
+
+
 async fn fetch_web_rust(url: &str) -> String {
-    // Usamos el cliente HTTP que ya tienes, pero añadimos un User-Agent humano
-    // para evitar que firewalls básicos bloqueen al agente.
     let client = reqwest::Client::builder()
         .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
         .build()
@@ -673,7 +764,6 @@ async fn fetch_web_rust(url: &str) -> String {
             match res.text().await {
                 Ok(texto) => {
                     let mut fragmento = texto.trim().to_string();
-                    // Límite de seguridad: Evitar que una web gigante reviente la memoria de Ollama
                     if fragmento.len() > 6000 {
                         fragmento = format!(
                             "{}... [TEXTO TRUNCADO POR LÍMITE DE RAM]",
@@ -689,6 +779,149 @@ async fn fetch_web_rust(url: &str) -> String {
     }
 }
 
+
+// ==========================================
+// HERRAMIENTA DE TELEMETRÍA DE HARDWARE (POR SI QUIERES USARLA EN EL FUTURO PARA AJUSTE DINÁMICO DE MODELOS)
+// ==========================================
+
+#[derive(Serialize)]
+pub struct TelemetriaHardware {
+    pub os: String,
+    pub cpu: String,
+    pub ram_total_gb: f64,
+    pub ram_libre_gb: f64,
+}
+
+#[tauri::command]
+fn obtener_telemetria_hardware() -> Result<TelemetriaHardware, String> {
+    let mut sys = System::new_all();
+    sys.refresh_all();
+
+    let ram_total_gb = sys.total_memory() as f64 / 1_073_741_824.0;
+    let ram_libre_gb = sys.free_memory() as f64 / 1_073_741_824.0;
+    
+    let cpu = sys.cpus().first().map(|c| c.brand().to_string()).unwrap_or_else(|| "CPU Desconocida".to_string());
+    let os = System::long_os_version().unwrap_or_else(|| "SO Desconocido".to_string());
+
+    Ok(TelemetriaHardware {
+        os,
+        cpu,
+        ram_total_gb,
+        ram_libre_gb,
+    })
+}
+
+// ==========================================
+// ASISTENTE DE CORREO (IMAP/SMTP)
+// ==========================================
+
+#[tauri::command]
+async fn leer_correos_recientes(
+    servidor: String,
+    usuario: String,
+    token: String,
+) -> Result<String, String> {
+    tokio::task::spawn_blocking(move || {
+        let tls = native_tls::TlsConnector::new().map_err(|e| e.to_string())?;
+        
+        // Conexión al servidor IMAP (ej. imap.gmail.com:993)
+        let cliente = imap::connect((servidor.as_str(), 993), &servidor, &tls)
+            .map_err(|e| e.to_string())?;
+            
+        let mut sesion = cliente.login(&usuario, &token).map_err(|e| e.0.to_string())?;
+        
+        sesion.select("INBOX").map_err(|e| e.to_string())?;
+        
+        let mensajes_ids = sesion.search("ALL").map_err(|e| e.to_string())?;
+        if mensajes_ids.is_empty() {
+            return Ok("La bandeja de entrada está completamente vacía.".to_string());
+        }
+        
+        let total = mensajes_ids.len();
+        let inicio = if total > 5 { total - 4 } else { 1 };
+        let rango = format!("{}:{}", inicio, total);
+        
+        let mut reporte = String::from("--- CORREOS RECIENTES ENCONTRADOS ---\n");
+        let mensajes = sesion.fetch(&rango, "ENVELOPE").map_err(|e| e.to_string())?;
+        
+        for m in mensajes.iter() {
+            if let Some(envelope) = m.envelope() {
+                let asunto = envelope.subject.and_then(|s| String::from_utf8(s.to_vec()).ok()).unwrap_or_else(|| "Sin Asunto".to_string());
+                let de = envelope.from.as_ref().and_then(|f| f.first().map(|addr| {
+                    let mailbox = String::from_utf8_lossy(addr.mailbox.unwrap_or(b"")).to_string();
+                    let host = String::from_utf8_lossy(addr.host.unwrap_or(b"")).to_string();
+                    format!("{}@{}", mailbox, host)
+                })).unwrap_or_else(|| "Remitente Desconocido".to_string());
+                
+                reporte.push_str(&format!("ID: {} | De: {} | Asunto: {}\n", m.message, de, asunto));
+            }
+        }
+        
+        sesion.logout().map_err(|e| e.to_string())?;
+        Ok(reporte)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn enviar_correo_smtp(
+    destinatario: String,
+    asunto: String,
+    cuerpo: String,
+) -> Result<String, String> {
+    use lettre::transport::smtp::authentication::Credentials;
+    use lettre::{Message, AsyncSmtpTransport, AsyncTransport, Tokio1Executor};
+
+    // 1. Inyección automática desde el almacenamiento local
+    let config = cargar_configuracion().await.map_err(|e| format!("Error de config: {}", e))?;
+
+    // 2. Construcción del mensaje usando la config inyectada
+    let email = Message::builder()
+        .from(config.email.parse().map_err(|_| "Remitente inválido en config")?)
+        .to(destinatario.parse().map_err(|_| "Destinatario inválido")?)
+        .subject(asunto)
+        .body(cuerpo)
+        .map_err(|e| e.to_string())?;
+
+    // 3. Credenciales tomadas directamente del archivo config.json
+    let credenciales = Credentials::new(config.email, config.token);
+    
+    let transportador = AsyncSmtpTransport::<Tokio1Executor>::relay(&config.smtp_server)
+        .map_err(|e| e.to_string())?
+        .credentials(credenciales)
+        .build();
+
+    match transportador.send(email).await {
+        Ok(response) => {
+            let mensaje_servidor = response.message().collect::<Vec<_>>().join(" ");
+            Ok(format!("ÉXITO: Correo enviado. Servidor respondió: {}", mensaje_servidor))
+        },
+        Err(e) => Err(format!("Fallo: {}", e)),
+    }
+}
+
+
+
+#[tauri::command]
+async fn salvar_configuracion(config: MailConfig) -> Result<(), String> {
+    println!("Configuración recibida: {:?}", config);
+    Ok(())
+}
+
+#[tauri::command]
+async fn cargar_configuracion() -> Result<MailConfig, String> {
+    let mut config_path = PathBuf::from("config.json"); // Tauri lo buscará en el AppData
+    
+    let content = fs::read_to_string(config_path)
+        .map_err(|_| "No se encontró el archivo de configuración".to_string())?;
+        
+    let config: MailConfig = serde_json::from_str(&content)
+        .map_err(|_| "Error al parsear la configuración".to_string())?;
+        
+    Ok(config)
+}
+
 // ==========================================
 // EL MOTOR INICIALIZADOR DE TAURI
 // ==========================================
@@ -696,6 +929,7 @@ async fn fetch_web_rust(url: &str) -> String {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_store::Builder::default().build())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
@@ -706,7 +940,12 @@ pub fn run() {
             leer_archivo_local,
             obtener_modelos_rust,
             enviar_chat_rust,
-            obtener_directorio_actual
+            obtener_directorio_actual,
+            obtener_telemetria_hardware,
+            leer_correos_recientes,
+            enviar_correo_smtp,
+            cargar_configuracion,
+            salvar_configuracion,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
