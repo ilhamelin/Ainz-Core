@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { useAppLogic } from './composables/useAppLogic';
+import Settings from './composables/Settings.vue';
 
 // Usamos toda la lógica
 const {
@@ -325,6 +326,9 @@ const {
             <button :class="{ active: tabActivaConfig === 'permisos' }" @click="tabActivaConfig = 'permisos'">
               🛡️ Permisos de Sistema
             </button>
+            <button :class="{ active: tabActivaConfig === 'correo' }" @click="tabActivaConfig = 'correo'">
+              ✉️ Servidor de Correo
+            </button>
             <button :class="{ active: tabActivaConfig === 'motor' }" @click="tabActivaConfig = 'motor'">
               🧠 Motor IA
             </button>
@@ -387,6 +391,13 @@ const {
                   </div>
                 </label>
               </div>
+            </div>
+
+            <div v-if="tabActivaConfig === 'correo'" class="settings-view">
+              <h4 class="settings-title">Servidor de Correo (IMAP/SMTP)</h4>
+              <p class="settings-desc">Estructura los parámetros de acceso local para la gestión autónoma del asistente.
+              </p>
+              <Settings />
             </div>
 
             <div v-if="tabActivaConfig === 'cerebro'" class="settings-view">
@@ -471,7 +482,7 @@ const {
                     <span style="font-size: 12px; color: var(--text-muted);">{{ mod.desc }}</span>
                     <span style="font-size: 11px; color: #88c0d0;">Parámetros: {{ mod.params }} | Requiere: {{
                       mod.reqRam
-                      }}GB RAM</span>
+                    }}GB RAM</span>
                   </div>
                 </div>
               </div>

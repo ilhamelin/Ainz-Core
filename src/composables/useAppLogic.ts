@@ -159,7 +159,7 @@ export function useAppLogic() {
   const inputUsuario = ref("");
   const estaPensando = ref(false);
   const permisoAccesoGlobal = ref<boolean>(false);
-  const tabActivaConfig = ref<'apariencia' | 'motor' | 'cerebro' | 'actualizaciones' | 'acerca' | 'permisos'>('apariencia');
+  const tabActivaConfig = ref<'apariencia' | 'motor' | 'cerebro' | 'correo' | 'actualizaciones' | 'acerca' | 'permisos'>('apariencia');
   const directorioActual = ref("Iniciando...");
 
   // ==========================================

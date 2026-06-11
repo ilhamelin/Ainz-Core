@@ -403,45 +403,53 @@ async fn ejecutar_agente_autonomo(
             continue;
         }
 
-        // --- INTERCEPTOR: LEER CORREOS ---
         if respuesta_texto.contains("Action: read_emails") {
-            let input = extraer_parametro(&respuesta_texto, "Action Input:");
-            let partes: Vec<&str> = input.split('|').collect();
-            if partes.len() == 3 {
-                let _ = app.emit("agente-estado", "~ Sincronizando bandeja de entrada...");
-                let res = leer_correos_recientes(partes[0].to_string(), partes[1].to_string(), partes[2].to_string()).await;
-                let obs = match res { Ok(m) => m, Err(e) => format!("Error de red IMAP: {}", e) };
-                contexto_actual.push(MensajeChat { role: "assistant".into(), content: respuesta_texto.clone() });
-                contexto_actual.push(MensajeChat { role: "system".into(), content: format!("Observation: {}", obs) });
-                iteraciones += 1; continue;
-            }
+            let _ = app.emit("agente-estado", "~ Revisando bandeja de entrada...");
+            
+            // Llamada directa sin parámetros
+            let res = leer_correos_recientes().await;
+            let obs = match res { Ok(m) => m, Err(e) => format!("Error IMAP: {}", e) };
+            
+            contexto_actual.push(MensajeChat { role: "assistant".into(), content: respuesta_texto.clone() });
+            contexto_actual.push(MensajeChat { role: "system".into(), content: format!("Observation: {}", obs) });
+            iteraciones += 1; 
+            continue;
         }
 
         // --- INTERCEPTOR: ENVIAR CORREO ---
         if respuesta_texto.contains("Action: send_email") {
             let input = extraer_parametro(&respuesta_texto, "Action Input:");
             let partes: Vec<&str> = input.split('|').collect();
-    
-            // Cambiamos de 6 partes esperadas a solo 3
+            
             if partes.len() == 3 {
                 let _ = app.emit("agente-estado", "~ Despachando correo electrónico...");
                 
-                // Ahora solo pasamos los 3 parámetros necesarios
                 let res = enviar_correo_smtp(
-                    partes[0].to_string(), // destinatario
-                    partes[1].to_string(), // asunto
-                    partes[2].to_string()  // cuerpo
+                    partes[0].to_string(), 
+                    partes[1].to_string(), 
+                    partes[2].to_string()
                 ).await;
                 
                 let obs = match res { Ok(m) => m, Err(e) => format!("Error SMTP: {}", e) };
+                
+                // 1. Guardamos la acción que tomó el asistente
                 contexto_actual.push(MensajeChat { role: "assistant".into(), content: respuesta_texto.clone() });
-                contexto_actual.push(MensajeChat { role: "system".into(), content: format!("Observation: {}", obs) });
-                iteraciones += 1; continue;
+                
+                // 2. EL FIX CRÍTICO: Cambiamos "system" por "user" y forzamos la salida del bucle.
+                let directiva_salida = format!(
+                    "Observation: {}\nAcción completada con éxito. NO repitas la acción de envío. Ahora debes responder obligatoriamente al usuario resumiendo el resultado usando el formato 'Final Answer: [tu mensaje]'.", 
+                    obs
+                );
+                contexto_actual.push(MensajeChat { role: "user".into(), content: directiva_salida });
+                
+                iteraciones += 1; 
+                continue;
             } else {
-                // Es vital añadir un mensaje de error si el Agente no sigue el formato de 3 partes
+                // Manejo de error con la misma directiva estricta como rol 'user'
                 let obs = "Error: Formato de Action Input incorrecto. Esperaba 3 parámetros: destinatario|asunto|cuerpo";
-                contexto_actual.push(MensajeChat { role: "system".into(), content: format!("Observation: {}", obs) });
-                iteraciones += 1; continue;
+                contexto_actual.push(MensajeChat { role: "user".into(), content: format!("Observation: {}\nCorrige tus parámetros e inténtalo de nuevo.", obs) });
+                iteraciones += 1; 
+                continue;
             }
         }
 
@@ -816,11 +824,16 @@ fn obtener_telemetria_hardware() -> Result<TelemetriaHardware, String> {
 // ==========================================
 
 #[tauri::command]
-async fn leer_correos_recientes(
-    servidor: String,
-    usuario: String,
-    token: String,
-) -> Result<String, String> {
+async fn leer_correos_recientes() -> Result<String, String> {
+    // 1. Cargamos la configuración asíncronamente ANTES del bloque de tokio
+    let config = cargar_configuracion().await.map_err(|e| format!("Error de config: {}", e))?;
+    
+    // 2. Extraemos los valores a variables locales para poder moverlas al closure
+    let servidor = config.imap_server;
+    let usuario = config.email;
+    let token = config.token;
+
+    // 3. Tu lógica original intacta, usando las variables locales
     tokio::task::spawn_blocking(move || {
         let tls = native_tls::TlsConnector::new().map_err(|e| e.to_string())?;
         
@@ -864,6 +877,7 @@ async fn leer_correos_recientes(
     .map_err(|e| e.to_string())?
 }
 
+
 #[tauri::command]
 async fn enviar_correo_smtp(
     destinatario: String,
@@ -905,13 +919,20 @@ async fn enviar_correo_smtp(
 
 #[tauri::command]
 async fn salvar_configuracion(config: MailConfig) -> Result<(), String> {
-    println!("Configuración recibida: {:?}", config);
+    let config_path = std::path::PathBuf::from("config.json");
+    
+    let json_string = serde_json::to_string_pretty(&config)
+        .map_err(|e| format!("Error al serializar el JSON: {}", e))?;
+        
+    std::fs::write(config_path, json_string)
+        .map_err(|e| format!("Error de lectura/escritura en disco: {}", e))?;
+        
     Ok(())
 }
 
 #[tauri::command]
 async fn cargar_configuracion() -> Result<MailConfig, String> {
-    let mut config_path = PathBuf::from("config.json"); // Tauri lo buscará en el AppData
+    let config_path = PathBuf::from("config.json");
     
     let content = fs::read_to_string(config_path)
         .map_err(|_| "No se encontró el archivo de configuración".to_string())?;
