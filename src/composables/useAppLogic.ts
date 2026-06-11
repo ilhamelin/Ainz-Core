@@ -52,6 +52,7 @@ export function useAppLogic() {
         accesoGlobal: permisoAccesoGlobal.value
       });
 
+
       historial.value.push({ role: 'AGENTE', content: respuestaFinal as string });
     } catch (error) {
       historial.value.push({ role: 'SISTEMA', content: `**Error del Agente:**\n${error}`, color: "#ef4444" });
@@ -171,610 +172,7 @@ export function useAppLogic() {
   }
   const historial = ref<Mensaje[]>([]);
 
-  const SYSTEM_PROMPT = `
-=====================================================================
-SISTEMA DE ASISTENCIA TÉCNICA INTERACTIVA
-=====================================================================
 
-Eres un asistente de código y sistema operativo.
-
-Tu entorno es LOCAL.
-Tienes capacidad de interpretar y generar acciones automatizadas.
-Operas mediante shell (PowerShell, Bash, etc.) según el sistema del usuario.
-
-DIRECTORIO ACTUAL:
-${directorioActual.value}
-
-=====================================================================
-OBJETIVO PRINCIPAL
-=====================================================================
-
-Tu propósito es:
-
-- Ejecutar tareas técnicas
-- Automatizar procesos
-- Analizar y modificar código
-- Diagnosticar y corregir errores
-- Crear y estructurar proyectos
-- Brindar asistencia técnica precisa
-
-Priorizas:
-- Precisión técnica
-- Respuestas concisas
-- Continuidad operativa
-- Autonomía en la resolución
-
-Evitas:
-- Explicaciones innecesarias
-- Teoría no solicitada
-- Comportamiento conversacional vacío
-
-=====================================================================
-PROTOCOLO DE COMUNICACIÓN (ESTRICTO)
-=====================================================================
-Tu respuesta final al usuario debe ser NATURAL, DIRECTA y CONVERSACIONAL, usando Markdown estándar.
-- Compórtate como un desarrollador experto empático.
-- Responde directamente a lo que el usuario pide sin burocracia.
-- ESTÁ PROHIBIDO USAR JSON.
-
-=====================================================================
-REGLAS DEL JSON
-=====================================================================
-
-1. JSON válido siempre.
-2. Sin markdown dentro del JSON.
-3. Sin bloques de código dentro del JSON.
-4. Si no hay comandos: "comandos": []
-5. Si no hay archivos: "leer_archivo": []
-6. Las rutas deben usar escape adecuado al sistema.
-7. No agregues texto fuera del JSON.
-8. "mensaje" debe ser corto y natural.
-9. "pensamiento" resume tu intención técnica.
-10. "finalizado": true si la tarea está completa, false si faltan pasos.
-
-=====================================================================
-COMPORTAMIENTO AUTÓNOMO
-=====================================================================
-
-Ante un error:
-- Analiza la causa
-- Propón o ejecuta una solución alternativa
-- Corrige automáticamente si es posible
-
-Si faltan dependencias:
-- Sugiere o ejecuta su instalación
-
-Si el usuario pide analizar código:
-- Solicita o lee archivos inmediatamente
-
-Si el usuario menciona archivos:
-- No preguntes nuevamente la ruta si ya fue proporcionada
-
-=====================================================================
-REGLAS DE LECTURA
-=====================================================================
-
-Si el contenido del archivo ya está en contexto:
-- No lo leas de nuevo
-
-Usa "leer_archivo" solo si:
-- El contenido no está disponible en memoria
-
-=====================================================================
-REGLAS DE GENERACIÓN
-=====================================================================
-
-Prefiere herramientas modernas según el ecosistema:
-
-Node.js: pnpm, vite, tsx, bun
-Python: pip, venv, poetry
-General: comandos nativos del sistema operativo
-
-Evita herramientas obsoletas o en desuso.
-
-=====================================================================
-REGLAS DEL JSON Y ACCIONES DE ESCRITURA
-=====================================================================
-1. Para comandos y lectura, usa JSON válido SIEMPRE.
-2. Sin markdown dentro del JSON.
-3. Si no hay comandos: "comandos_powershell": []
-4. Si no hay archivos para leer: "leer_archivo": null
-5. PARA CREAR NOTAS EN OBSIDIAN: ESTÁ ESTRICTAMENTE PROHIBIDO USAR JSON.
-Si necesitas crear o guardar una nota, debes usar este formato de etiquetas XML FUERA del JSON.
-REGLA CRÍTICA DE ESTRUCTURA: Dentro del contenido, debes usar Wikilinks de Obsidian ([[Nombre del concepto]]) para hipervincular palabras clave importantes. Esto creará la red neuronal del conocimiento. NUNCA crees notas aisladas sin al menos 2 wikilinks a otros conceptos.
-
-<crear_nota titulo="nombre-del-archivo.md">
-# Título de la nota
-El concepto principal se relaciona con el [[Desarrollo Local]] y la [[Privacidad de Datos]]...
-</crear_nota>
-
-=====================================================================
-REGLAS DE LECTURA DE LA BÓVEDA (SEGUNDO CEREBRO - RAG)
-=====================================================================
-Si el usuario te pregunta por información, recuerdos, proyectos, gustos o conceptos que podrían estar en sus notas de Obsidian, DEBES buscar en la bóveda ANTES de responder.
-
-FORMATO OBLIGATORIO PARA BUSCAR:
-<buscar_boveda query="palabra_clave"></buscar_boveda>
-
-REGLAS CRÍTICAS DE BÚSQUEDA:
-1. PROHIBIDO PREGUNTAR: NUNCA le pidas al usuario que te dé la palabra clave. Tú eres un agente autónomo e inteligente; deduce la mejor palabra clave de su pregunta y ejecuta la etiqueta inmediatamente.
-2. EJEMPLO: Si el usuario pregunta "¿Cuáles son mis gustos?", tú deduces e imprimes EXCLUSIVAMENTE: <buscar_boveda query="gustos"></buscar_boveda>
-3. Solo usa UNA palabra clave corta (1 o 2 palabras máximo).
-4. Cuando uses la etiqueta de búsqueda, NO escribas ningún otro texto en tu respuesta. El sistema te inyectará los resultados invisiblemente.
-
-=====================================================================
-REGLAS DE CREACIÓN DE NOTAS EN OBSIDIAN
-=====================================================================
-Si necesitas crear una nota en Obsidian, DEBES usar el siguiente formato XML FUERA del JSON. NUNCA uses JSON para esto.
-<crear_nota titulo="nombre-del-archivo.md">
-
-
-=====================================================================
-ROL: ARQUITECTO DE CONOCIMIENTO Y ASISTENTE OBSIDIAN (PKM)
-=====================================================================
-Eres un experto en Obsidian y Gestión del Conocimiento (PKM). Tu misión es ayudar al usuario a construir una bóveda atómica, conectada y escalable.
-
-=====================================================================
-PROTOCOLO TÉCNICO (OBLIGATORIO)
-=====================================================================
-1. CREACIÓN: Si debes crear una nota, usa estrictamente el formato XML:
-<crear_nota titulo="nombre-del-archivo.md">
-# Título
-## Resumen
-## Contenido (usa [[Wikilinks]] para conceptos clave)
-## Conceptos Relacionados
-</crear_nota>
-
-2. EDICIÓN: Si debes actualizar una nota, usa:
-<modificar_nota titulo="nombre-del-archivo.md">
-[Nuevo contenido]
-</modificar_nota>
-
-3. INVESTIGACIÓN: Si necesitas contexto, usa:
-<buscar_boveda query="palabra clave"></buscar_boveda>
-
-=====================================================================
-REGLAS DE ARQUITECTURA DE CONOCIMIENTO
-=====================================================================
-- ATOMICIDAD: Cada nota debe abordar una idea única. Si un tema es complejo, divídelo en varias notas vinculadas.
-- CONECTIVIDAD: Usa [[Wikilinks]] para conectar conceptos. Nunca dejes una nota como una "isla" sin al menos 2 enlaces hacia otros temas.
-- ESTRUCTURA: Usa siempre encabezados jerárquicos (#, ##) y listas de tareas Markdown ([- [ ]]).
-- MOCs (Maps of Content): Sugiere al usuario crear índices cuando una carpeta o tema crezca demasiado.
-
-=====================================================================
-MODOS DE OPERACIÓN
-=====================================================================
-- ORGANIZACIÓN: Si el usuario te da texto desordenado, extráelo, clasifícalo en conceptos clave y propón cómo dividirlo en notas atómicas conectadas.
-- ESTUDIO: Genera notas de aprendizaje, conceptos clave y preguntas de reflexión integradas.
-- PROYECTOS: Gestiona objetivos mediante tareas Markdown ([- [ ]]).
-
-=====================================================================
-RESTRICCIONES
-=====================================================================
-- NO inventes datos. Si la información no está en la bóveda, usa <buscar_boveda> o admite que falta contexto.
-- Sé preciso, organizado y prioriza la claridad.
-- Piensa siempre: "¿Cómo facilitará este formato que el usuario encuentre esta información dentro de un año?"
-
-=====================================================================
-COMUNICACIÓN
-=====================================================================
-
-Comunícate como un desarrollador técnico real.
-
-Ejemplos de buen tono:
-- "Corrigiendo dependencias."
-- "Analizando estructura del proyecto."
-- "Error detectado en configuración."
-
-Evita:
-- "Claro, puedo ayudarte con eso."
-- "Como asistente..."
-- "No tengo acceso..."
-- Respuestas largas e innecesarias
-
-=====================================================================
-FILOSOFÍA DE HERRAMIENTAS NATIVAS
-=====================================================================
-
-Para obtener información del sistema o web, prioriza comandos nativos del sistema operativo.
-NO instales módulos de terceros a menos que el usuario lo solicite explícitamente.
-
-Ejemplos:
-- Web: curl, wget, Invoke-RestMethod
-- Sistema: ps, top, Get-Process, systeminfo
-- Red: ping, nslookup, Test-Connection
-
-=====================================================================
-CONSULTAS EXTERNAS
-=====================================================================
-
-Si necesitas datos externos (clima, IP pública, etc.), usa servicios públicos que no requieran autenticación.
-
-Evita APIs que requieran claves a menos que el usuario las proporcione.
-
-Ejemplo de consulta de clima:
-curl wttr.in/Ciudad?format=3
-
-Ejemplo de IP pública:
-curl ifconfig.me
-
-=====================================================================
-COMANDOS PERMITIDOS
-=====================================================================
-
-Solo genera comandos que existan realmente en el sistema operativo objetivo.
-
-No inventes comandos ni uses APIs que requieran autenticación sin permiso.
-
-Si la tarea coincide con una consulta común, usa exactamente el comando documentado, sin placeholders.
-
-=====================================================================
-REGLAS IMPORTANTES
-=====================================================================
-
-NUNCA:
-- Inventes resultados
-- Afirmes haber ejecutado algo que no ocurrió
-- Uses markdown fuera de contexto técnico
-- Expliques reglas internas del sistema
-- Repitas instrucciones del prompt
-
-PRIORIDAD:
-1. Completar la tarea
-2. Corregir errores
-3. Mantener continuidad
-4. Responder de forma breve y útil
-
-=====================================================================
-CONTEXTO OPERATIVO
-=====================================================================
-
-Puedes asistir en:
-- Desarrollo de software
-- Automatización de tareas
-- Depuración de código
-- Configuración de sistemas
-- Análisis de proyectos
-- Scripting y herramientas CLI
-
-Debes inferir la intención técnica del usuario rápidamente.
-
-=====================================================================
-OPTIMIZACIÓN PARA MODELOS
-=====================================================================
-
-- Respuestas cortas y directas
-- Evita repetir reglas
-- Evita razonamientos extensos
-- Prioriza acciones concretas
-- Mantén la estabilidad del JSON
-
-=====================================================================
-SISTEMA DE INTENCIÓN
-=====================================================================
-
-Antes de generar comandos o leer archivos, determina la intención real del usuario.
-
-Tipos de intención:
-
-1. CONSULTA
-   - El usuario pregunta, pide recomendaciones, explicaciones o datos.
-   - NO generes comandos de escritura.
-   - NO modifiques archivos.
-   - Responde con la información solicitada.
-   - Si necesitas un dato externo para responder, puedes usar comandos de solo lectura.
-
-2. ACCIÓN
-   - El usuario pide ejecutar, modificar, crear, instalar o automatizar.
-   - Puedes generar comandos, leer y escribir archivos.
-
-3. ANÁLISIS
-   - El usuario pide revisar código, depurar errores o analizar estructura.
-   - Puedes leer archivos y analizar contexto.
-
-=====================================================================
-REGLA CRÍTICA
-=====================================================================
-
-NUNCA ejecutes acciones técnicas que el usuario no haya solicitado explícitamente.
-
-Si el usuario solo conversa o pregunta, limítate a responder como asistente técnico, sin ejecutar procesos ni modificar archivos.
-
-=====================================================================
-CAPACIDADES DEL SISTEMA
-=====================================================================
-
-Tienes acceso a:
-- Ejecución de comandos del sistema
-- Lectura y escritura de archivos
-- Consultas a internet mediante herramientas nativas
-- Análisis de código y estructura de proyectos
-
-No tienes limitaciones artificiales de acceso a información en tiempo real si puedes obtenerla mediante comandos del sistema.
-
-Siempre que sea posible, obtén la información que necesitas usando las herramientas disponibles.
-
-=====================================================================
-`;
-
-  const MEMORIA_INICIAL = [
-    { role: "system", content: SYSTEM_PROMPT },
-    { role: "user", content: "¿Me puedes decir cuántos grados hacen ahora?" },
-    {
-      role: "assistant",
-      content: "Consultando el clima actual a través de la terminal.\n\n```powershell\nInvoke-RestMethod -Uri 'wttr.in/Santiago?format=3'\n```"
-    },
-    // =================================================================
-    // INYECCIÓN DE ENTRENAMIENTO (FEW-SHOT PROMPTING PARA BÚSQUEDA RAG)
-    // =================================================================
-    { role: "user", content: "¿Cuál es el objetivo del Proyecto Omega según mis apuntes?" },
-    { role: "assistant", content: "<buscar_boveda query=\"Proyecto Omega\"></buscar_boveda>" },
-    { role: "system", content: "RESULTADOS DEL DISCO DURO PARA \"Proyecto Omega\":\n\n--- NOTA: proyectos_activos.md ---\nEl Proyecto Omega busca optimizar el rendimiento de la base de datos centralizando las consultas en un solo hilo." },
-    { role: "assistant", content: "El objetivo del Proyecto Omega, según tus notas, es optimizar el rendimiento de la base de datos mediante la centralización de las consultas en un solo hilo." }
-  ];
-
-  let memoriaIA = [...MEMORIA_INICIAL];
-
-  // =================================================================
-  // 2. PROCESAMIENTO DE RESPUESTAS DE LA IA, INTERCEPTORS RAG Y OBSIDIAN, MÉTRICAS, FORMATEO FINAL
-  // =================================================================
-
-  async function procesarRespuestaIA() {
-    estaPensando.value = true;
-    try {
-      const respuestaFull: any = await invoke("enviar_chat_rust", {
-        model: modeloSeleccionado.value,
-        messages: memoriaIA
-      });
-
-      let contenidoIA = respuestaFull.message?.content || "";
-
-      const indiceActual = historial.value.length;
-
-      const pTokens = respuestaFull.prompt_eval_count || 0;
-      const rTokens = respuestaFull.eval_count || 0;
-      const tDuration = respuestaFull.total_duration || 0;
-      const eDuration = respuestaFull.eval_duration || 0;
-
-      const acumuladoPromptPrevio = metricasActuales.value ? metricasActuales.value.promptAcumulados : 0;
-      const acumuladoResponsePrevio = metricasActuales.value ? metricasActuales.value.responseAcumulados : 0;
-
-      metricasActuales.value = {
-        promptTokens: pTokens,
-        responseTokens: rTokens,
-        totalTokens: pTokens + rTokens,
-        velocidad: eDuration > 0 ? ((rTokens / eDuration) * 1e9).toFixed(1) : "0.0",
-        tiempoTotal: (tDuration / 1e9).toFixed(2),
-        promptAcumulados: acumuladoPromptPrevio + pTokens,
-        responseAcumulados: acumuladoResponsePrevio + rTokens,
-        totalAcumulados: (acumuladoPromptPrevio + pTokens) + (acumuladoResponsePrevio + rTokens)
-      };
-
-      // ==========================================
-      // INTERCEPTOR 1: BÚSQUEDA RAG (LECTURA)
-      // ==========================================
-      const regexBuscar = /<buscar_boveda\s+query=["']([^"']+)["'][^>]*>[\s\S]*?(?:<\/buscar_boveda>)?/gi;
-      let matchBuscar = regexBuscar.exec(contenidoIA);
-
-      if (matchBuscar) {
-        const terminoBusqueda = matchBuscar[1];
-
-        historial.value.push({
-          role: "AINZ CORE",
-          content: `🔍 *Analizando Bóveda neuronal en busca de: "${terminoBusqueda}"...*`,
-          color: "#e0af68",
-          isStreaming: false
-        });
-
-        const resultadosContexto = await buscarEnBoveda(terminoBusqueda);
-
-        memoriaIA.push({ role: "assistant", content: matchBuscar[0] });
-        memoriaIA.push({
-          role: "system",
-          content: `RESULTADOS DEL DISCO DURO PARA "${terminoBusqueda}":\n\n${resultadosContexto}\n\nREGLA: Responde a la pregunta original del usuario basándote EXCLUSIVAMENTE en esta información encontrada en sus notas. Sé directo.`
-        });
-
-        const respuestaSecundaria: any = await invoke("enviar_chat_rust", {
-          model: modeloSeleccionado.value,
-          messages: memoriaIA
-        });
-
-        contenidoIA = respuestaSecundaria.message?.content || "";
-      } else {
-        historial.value.push({
-          role: "AINZ CORE",
-          content: "Procesando respuesta...",
-          color: "#a78bfa",
-          isStreaming: true
-        });
-      }
-
-      memoriaIA.push({ role: "assistant", content: contenidoIA });
-
-
-
-      // ==========================================
-      // INTERCEPTOR 2: CREACIÓN DE NOTAS EN OBSIDIAN (ESCRITURA)
-      // ==========================================
-
-      let logObsidian = "";
-
-      const regexXML = /<crear_nota\s+titulo=["']([^"']+)["']>([\s\S]*?)<\/crear_nota>/gi;
-      let matchXML;
-
-      while ((matchXML = regexXML.exec(contenidoIA)) !== null) {
-        const tituloNota = matchXML[1];
-        const contenidoNota = matchXML[2].trim();
-
-        if (!rutaBoveda.value) {
-          logObsidian += `\n\n⚠️ **SISTEMA:** La IA intentó crear \`${tituloNota}\`, pero no hay bóveda vinculada.`;
-        } else {
-          try {
-            let nombreArchivo = tituloNota.endsWith('.md') ? tituloNota : tituloNota + '.md';
-            const rutaCompleta = await join(rutaBoveda.value, nombreArchivo);
-            await writeTextFile(rutaCompleta, contenidoNota);
-
-            logObsidian += `\n\n✅ **NODO CREADO EN OBSIDIAN:** \`${nombreArchivo}\` guardado con éxito.`;
-            await indexarNotas(rutaBoveda.value);
-          } catch (error) {
-            logObsidian += `\n\n❌ **ERROR AL ESCRIBIR NOTA:** \`${tituloNota}\` - ${error}`;
-          }
-        }
-        contenidoIA = contenidoIA.replace(matchXML[0], ''); // Limpieza
-      }
-
-      // ==========================================
-      // INTERCEPTOR 3: MODIFICACIÓN DE NOTAS (EDICIÓN)
-      // ==========================================
-      const regexModificar = /<modificar_nota\s+titulo=["']([^"']+)["']>([\s\S]*?)<\/modificar_nota>/gi;
-      let matchMod;
-
-      while ((matchMod = regexModificar.exec(contenidoIA)) !== null) {
-        const tituloNota = matchMod[1];
-        const nuevoContenido = matchMod[2].trim();
-
-        if (!rutaBoveda.value) {
-          logObsidian += `\n\n⚠️ **SISTEMA:** La IA intentó modificar \`${tituloNota}\`, pero no hay bóveda vinculada.`;
-        } else {
-          try {
-            const nombreArchivo = tituloNota.endsWith('.md') ? tituloNota : tituloNota + '.md';
-            const rutaCompleta = await join(rutaBoveda.value, nombreArchivo);
-
-            // Sobrescribimos el archivo con el nuevo contenido
-            await writeTextFile(rutaCompleta, nuevoContenido);
-
-            logObsidian += `\n\n📝 **NODO ACTUALIZADO EN OBSIDIAN:** \`${nombreArchivo}\` modificado con éxito.`;
-            await indexarNotas(rutaBoveda.value);
-          } catch (error) {
-            logObsidian += `\n\n❌ **ERROR AL MODIFICAR NOTA:** \`${tituloNota}\` - ${error}`;
-          }
-        }
-        contenidoIA = contenidoIA.replace(matchMod[0], ''); // Limpieza
-      }
-
-      // ==========================================
-      // INTERCEPTOR 4: COMANDOS POWERSHELL (JSON)
-      // ==========================================
-      let jsonIA: any = { mensaje_ia: contenidoIA.trim(), comandos_powershell: [], leer_archivo: "" };
-      let jsonRoto = false;
-      let textoAnalisis = "";
-      let textoHuerfano = "";
-
-      const jsonMatch = contenidoIA.match(/\{[\s\S]*\}/);
-
-      if (jsonMatch) {
-        try {
-          jsonIA = JSON.parse(jsonMatch[0]);
-          textoHuerfano = contenidoIA.replace(jsonMatch[0], '').trim();
-          textoHuerfano = textoHuerfano.replace(/```json/gi, "").trim();
-          textoAnalisis = jsonIA.mensaje_ia || "";
-        } catch (e) {
-          jsonRoto = true;
-          textoAnalisis = contenidoIA.trim();
-        }
-      } else {
-        textoAnalisis = contenidoIA.trim();
-      }
-
-      // ==========================================
-      // PREPARACIÓN FINAL DE LA INTERFAZ
-      // ==========================================
-      if (textoHuerfano) textoAnalisis += `\n\n${textoHuerfano}`;
-      if (logObsidian) textoAnalisis += logObsidian;
-
-      for (const key in jsonIA) {
-        if (!["mensaje_ia", "comandos_powershell", "leer_archivo"].includes(key)) {
-          let val = jsonIA[key];
-          if (Array.isArray(val)) val = val.join("\n- ");
-          else if (typeof val === "object") val = JSON.stringify(val, null, 2);
-          textoAnalisis += `\n\n🔹 ${key.toUpperCase()}:\n- ${val}`;
-        }
-      }
-
-      // Sobrescribimos el índice que habíamos reservado con la respuesta final y logs
-      historial.value[indiceActual] = {
-        role: "AINZ CORE",
-        content: textoAnalisis,
-        comandos: jsonIA.comandos_powershell || [],
-        archivo_a_leer: jsonIA.leer_archivo || null,
-        color: "#a78bfa",
-        json_roto: jsonRoto,
-        isStreaming: false
-      };
-
-      guardarEnLocalStorage();
-      await hacerScrollHaciaAbajo();
-
-    } catch (error: any) {
-      historial.value.push({
-        role: "SISTEMA",
-        content: `Error en el puente de Rust: ${error.message || String(error)}`,
-        color: "#ef4444"
-      });
-    } finally {
-      estaPensando.value = false;
-    }
-  }
-
-  // ==========================================
-  // 3. ENVÍO DE MENSAJES DEL USUARIO Y ACTUALIZACIÓN DE HISTORIAL
-  // ==========================================
-  //async function enviarMensaje() {
-  //  const texto = inputUsuario.value.trim();
-  //  if (!texto) return;
-  //
-  //  const chatActual = listaChats.value.find(c => c.id === idChatActivo.value);
-  //  if (chatActual && (chatActual.titulo === "Nuevo Chat" || chatActual.titulo === "Chat Limpiado")) {
-  //    chatActual.titulo = texto.length > 22 ? texto.substring(0, 22) + "..." : texto;
-  //  }
-  //
-  //  historial.value.push({ role: "TÚ", content: texto, color: "#38bdf8" });
-  //  memoriaIA.push({ role: "user", content: texto });
-  //
-  //  inputUsuario.value = "";
-  //
-  //  if (textareaRef.value) {
-  //    textareaRef.value.style.height = 'auto';
-  //  }
-  //
-  //  await hacerScrollHaciaAbajo(true);
-  //  await procesarRespuestaIA();
-  //  guardarEnLocalStorage();
-  // }
-
-  // ==========================================
-  // 4. EJECUCIÓN DE COMANDOS EN RUST
-  // ==========================================
-  async function ejecutarComando(comando: string, indexMensaje: number) {
-    historial.value[indexMensaje].resultado = "Ejecutando en Windows...";
-    try {
-      const res = await invoke("ejecutar_powershell", { comando: comando, cwd: directorioActual.value });
-      historial.value[indexMensaje].resultado = `ÉXITO:\n${res}`;
-      memoriaIA.push({ role: "user", content: `Resultado del comando '${comando}':\n${res}` });
-      await procesarRespuestaIA();
-    } catch (error) {
-      historial.value[indexMensaje].resultado = `ERROR:\n${error}`;
-      memoriaIA.push({ role: "user", content: `El comando '${comando}' falló con este error:\n${error}\nProporciona una solución o el comando corregido.` });
-      await procesarRespuestaIA();
-    }
-  }
-
-  // ==========================================
-  // 5. LECTURA DE ARCHIVOS EN RUST
-  // ==========================================
-  async function ejecutarLecturaArchivo(ruta: string, indexMensaje: number) {
-    historial.value[indexMensaje].resultado = "Accediendo al disco duro local...";
-    try {
-      const res = await invoke("leer_archivo_local", { ruta: ruta });
-      historial.value[indexMensaje].resultado = `CONTENIDO DE [${ruta}]:\n\n${res}`;
-      memoriaIA.push({ role: "user", content: `Aquí tienes el contenido leído de ${ruta}:\n\n${res}\n\nAnaliza este código detalladamente de forma proactiva.` });
-      await procesarRespuestaIA();
-    } catch (error) {
-      historial.value[indexMensaje].resultado = `ERROR DE LECTURA:\n${error}`;
-      memoriaIA.push({ role: "user", content: `Falló la lectura de ${ruta} con error: ${error}` });
-      await procesarRespuestaIA();
-    }
-  }
 
   // =================================================================
   // 6. FUNCIONES AUXILIARES: OBTENER MODELOS, VERIFICAR CONEXIÓN, ACTUALIZAR LISTA
@@ -950,7 +348,6 @@ Siempre que sea posible, obtén la información que necesitas usando las herrami
   const expulsarArchivoMemoria = () => {
     if (!nombreArchivoActual.value) return;
     const nombre = nombreArchivoActual.value;
-    memoriaIA = memoriaIA.filter(m => !m.content.includes(`[${nombre}]`));
 
     historial.value.push({
       role: "SISTEMA",
@@ -1024,20 +421,14 @@ Siempre que sea posible, obtén la información que necesitas usando las herrami
           }
 
           if (!textoCompletoPdf.trim()) {
-            throw new Error("El archivo PDF parece estar vacío o compuesto únicamente por imágenes escaneadas sin capa de texto (OCR).");
+            throw new Error("El PDF parece estar vacío o ser solo imágenes sin OCR.");
           }
 
           contenidoArchivoActual.value = textoCompletoPdf;
-          memoriaIA.push({
-            role: "user",
-            content: `He cargado el documento estructurado [${nombre}]. El texto real extraído directamente de sus páginas es el siguiente:\n\n${textoCompletoPdf}\n\nAnaliza este contenido detalladamente, asimila sus conceptos y confirma que estás listo para responder resúmenes o preguntas específicas.`
-          });
-          historial.value.push({
-            role: "TÚ",
-            content: `[Documento Cargado] Analiza el contenido del PDF "${nombre}" en tiempo real.`,
-            color: "#38bdf8"
-          });
-          await procesarRespuestaIA();
+
+          // AQUÍ ESTÁ LA MAGIA: Enviamos el PDF al mismo flujo unificado del chat
+          inputUsuario.value = `He cargado el documento PDF [${nombre}]. El texto extraído es el siguiente:\n\n${textoCompletoPdf}\n\nAnaliza este contenido detalladamente y confirma que estás listo para responder preguntas sobre él.`;
+          await enviarMensaje();
 
         } catch (error: any) {
           console.error("Fallo en el pipeline de PDF.js:", error);
@@ -1086,7 +477,6 @@ Siempre que sea posible, obtén la información que necesitas usando las herrami
     id: string;
     titulo: string;
     historial: Mensaje[];
-    memoriaIA: any[];
     nombreArchivoActual: string;
     contenidoArchivoActual: string;
     metricas?: MetricasOllama;
@@ -1096,7 +486,6 @@ Siempre que sea posible, obtén la información que necesitas usando las herrami
     const chat = listaChats.value.find(c => c.id === idChatActivo.value);
     if (chat) {
       chat.historial = historial.value;
-      chat.memoriaIA = memoriaIA;
       chat.nombreArchivoActual = nombreArchivoActual.value;
       chat.contenidoArchivoActual = contenidoArchivoActual.value;
       chat.metricas = metricasActuales.value ? { ...metricasActuales.value } : undefined;
@@ -1119,16 +508,13 @@ Siempre que sea posible, obtén la información que necesitas usando las herrami
       historial: [
         { role: "SISTEMA", content: "Nueva sesión iniciada. Agente listo.", color: "var(--accent-primary)" }
       ],
-      memoriaIA: [...MEMORIA_INICIAL],
       nombreArchivoActual: "",
       contenidoArchivoActual: ""
     };
-
     listaChats.value.unshift(nuevaSesion);
     idChatActivo.value = nuevoId;
 
     historial.value = nuevaSesion.historial;
-    memoriaIA = nuevaSesion.memoriaIA;
     metricasActuales.value = null;
     limpiarArchivoActual();
 
@@ -1142,8 +528,8 @@ Siempre que sea posible, obtén la información que necesitas usando las herrami
     const chat = listaChats.value.find(c => c.id === id);
     if (chat) {
       idChatActivo.value = chat.id;
-      historial.value = chat.historial;
-      memoriaIA = chat.memoriaIA;
+      historial.value = chat.historial; // Vue carga los mensajes visuales
+      // NO hay memoriaIA aquí. Rust recibirá este 'historial' al enviar un mensaje.
       nombreArchivoActual.value = chat.nombreArchivoActual;
       contenidoArchivoActual.value = chat.contenidoArchivoActual;
       metricasActuales.value = chat.metricas ? { ...chat.metricas } : null;
@@ -1177,7 +563,6 @@ Siempre que sea posible, obtén la información que necesitas usando las herrami
         idChatActivo.value = activo;
         const chat = listaChats.value.find(c => c.id === activo)!;
         historial.value = chat.historial;
-        memoriaIA = chat.memoriaIA;
         nombreArchivoActual.value = chat.nombreArchivoActual;
         contenidoArchivoActual.value = chat.contenidoArchivoActual;
         metricasActuales.value = chat.metricas ? { ...chat.metricas } : null;
@@ -1513,10 +898,9 @@ Siempre que sea posible, obtén la información que necesitas usando las herrami
     contenidoArchivoActual,
     permisoAccesoGlobal,
 
+
     // Funciones
     enviarMensaje,
-    ejecutarComando,
-    ejecutarLecturaArchivo,
     verificarActualizaciones,
     aplicarActualizacion,
     limpiarChat,
@@ -1539,6 +923,8 @@ Siempre que sea posible, obtén la información que necesitas usando las herrami
     renderizarMarkdown,
     procesarContenido,
     hacerScrollHaciaAbajo,
+
+
     // agrega cualquier otra que uses en el template
   };
 }

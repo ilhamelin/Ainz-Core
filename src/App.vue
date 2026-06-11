@@ -53,8 +53,7 @@ const {
   mostrarConfiguracion,
   mostrarModalArchivo,
   enviarMensaje,
-  ejecutarComando,
-  ejecutarLecturaArchivo,
+
 
 } = useAppLogic();
 </script>
@@ -158,21 +157,6 @@ const {
                 </template>
               </div>
 
-              <div v-if="msg.comandos && msg.comandos.length > 0" class="oc-execution-block">
-                <div v-for="cmd in msg.comandos" :key="cmd" class="oc-cmd-row">
-                  <span class="oc-bullet">*</span>
-                  <code class="oc-code-cmd">Run "{{ cmd }}"</code>
-                  <button @click="ejecutarComando(cmd, index)" class="oc-btn">Execute</button>
-                </div>
-              </div>
-
-              <div v-if="msg.archivo_a_leer" class="oc-execution-block">
-                <div class="oc-cmd-row">
-                  <span class="oc-arrow">→</span>
-                  <code class="oc-code-cmd">Read {{ msg.archivo_a_leer }}</code>
-                  <button @click="ejecutarLecturaArchivo(msg.archivo_a_leer, index)" class="oc-btn">Read File</button>
-                </div>
-              </div>
 
               <div v-if="msg.resultado" class="oc-result-block">
                 <pre>{{ msg.resultado }}</pre>
