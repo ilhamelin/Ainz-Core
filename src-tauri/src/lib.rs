@@ -213,6 +213,34 @@ async fn ejecutar_agente_autonomo(
                     println!("❌ Error interno de Ollama: {}", err_str);
                     return Ok(format!("**Error de Ollama:** {}", err_str));
                 }
+
+                if let (Some(prompt_tokens), Some(eval_tokens)) = (
+                    json["prompt_eval_count"].as_i64(),
+                    json["eval_count"].as_i64()
+                ) {
+                    let prompt_tokens = json["prompt_eval_count"].as_i64().unwrap_or(0);
+                    let eval_tokens = json["eval_count"].as_i64().unwrap_or(0);
+                    
+                    let eval_duration = json["eval_duration"].as_i64().unwrap_or(0) as f64;
+                    let total_duration = json["total_duration"].as_i64().unwrap_or(0) as f64;
+
+                    let velocidad = if eval_duration > 0.0 {
+                        format!("{:.2}", (eval_tokens as f64) / (eval_duration / 1_000_000_000.0))
+                    } else {
+                        "0.00".to_string()
+                    };
+
+                    let tiempo_total = format!("{:.2}", total_duration / 1_000_000_000.0);
+
+                    let _ = app.emit("tokens-metricas", serde_json::json!({
+                        "prompt_tokens": prompt_tokens,
+                        "eval_tokens": eval_tokens,
+                        "velocidad": velocidad,
+                        "tiempo_total": tiempo_total
+                    }));
+                }
+
+
                 json["message"]["content"]
                     .as_str()
                     .unwrap_or("")
@@ -233,7 +261,6 @@ async fn ejecutar_agente_autonomo(
             let _ = app.emit("agente-estado", format!("~ Leyendo archivo: {}", ruta));
             let contenido = leer_archivo_local(ruta).await.unwrap_or_else(|e| e);
 
-            // AÑADE ESTA LÍNEA PARA GUARDAR LA OBSERVACIÓN:
             log_agente.push_str(&format!("Observation: {}\n\n", contenido));
 
             contexto_actual.push(MensajeChat {
@@ -241,8 +268,8 @@ async fn ejecutar_agente_autonomo(
                 content: respuesta_texto.clone(),
             });
             contexto_actual.push(MensajeChat {
-                role: "system".into(),
-                content: format!("Observation: {}", contenido),
+                role: "user".into(),
+                content: format!("Observation: {}\n(Acción completada. Evalúa este resultado. Si tienes la información necesaria, usa 'Final Answer: [tu respuesta]'. De lo contrario, continúa usando herramientas).", contenido),
             });
             iteraciones += 1;
             continue;
@@ -251,14 +278,16 @@ async fn ejecutar_agente_autonomo(
         if respuesta_texto.contains("Action: run_powershell") {
             let cmd = extraer_parametro(&respuesta_texto, "Action Input:");
 
-            // EL CANDADO FÍSICO (Se mantiene intacto)
             if !acceso_global {
                 let _ = app.emit("agente-estado", "⚠️ Acción bloqueada por seguridad");
                 contexto_actual.push(MensajeChat {
                     role: "assistant".into(),
                     content: respuesta_texto.clone(),
                 });
-                contexto_actual.push(MensajeChat { role: "system".into(), content: "Observation: ACCESO DENEGADO. El usuario no te ha dado permisos globales en la configuración.".to_string() });
+                contexto_actual.push(MensajeChat { 
+                    role: "user".into(), 
+                    content: "Observation: ACCESO DENEGADO. El usuario no te ha dado permisos globales en la configuración.\n(Acción completada. Evalúa este resultado. Si tienes la información necesaria, usa 'Final Answer: [tu respuesta]'. De lo contrario, continúa usando herramientas).".to_string() 
+                });
                 iteraciones += 1;
                 continue;
             }
@@ -273,8 +302,8 @@ async fn ejecutar_agente_autonomo(
                 content: respuesta_texto.clone(),
             });
             contexto_actual.push(MensajeChat {
-                role: "system".into(),
-                content: format!("Observation: {}", resultado_consola),
+                role: "user".into(),
+                content: format!("Observation: {}\n(Acción completada. Evalúa este resultado. Si tienes la información necesaria, usa 'Final Answer: [tu respuesta]'. De lo contrario, continúa usando herramientas).", resultado_consola),
             });
             iteraciones += 1;
             continue;
@@ -298,8 +327,8 @@ async fn ejecutar_agente_autonomo(
                 content: respuesta_texto.clone(),
             });
             contexto_actual.push(MensajeChat {
-                role: "system".into(),
-                content: format!("Observation: {}", resultado_boveda),
+                role: "user".into(),
+                content: format!("Observation: {}\n(Acción completada. Evalúa este resultado. Si tienes la información necesaria, usa 'Final Answer: [tu respuesta]'. De lo contrario, continúa usando herramientas).", resultado_boveda),
             });
             iteraciones += 1;
             continue;
@@ -320,8 +349,8 @@ async fn ejecutar_agente_autonomo(
                 content: respuesta_texto.clone(),
             });
             contexto_actual.push(MensajeChat {
-                role: "system".into(),
-                content: format!("Observation: {}", resultado_lista),
+                role: "user".into(),
+                content: format!("Observation: {}\n(Acción completada. Evalúa este resultado. Si tienes la información necesaria, usa 'Final Answer: [tu respuesta]'. De lo contrario, continúa usando herramientas).", resultado_lista),
             });
             iteraciones += 1;
             continue;
@@ -350,8 +379,8 @@ async fn ejecutar_agente_autonomo(
                 content: respuesta_texto.clone(),
             });
             contexto_actual.push(MensajeChat {
-                role: "system".into(),
-                content: format!("Observation: {}", resultado_creacion),
+                role: "user".into(),
+                content: format!("Observation: {}\n(Acción completada. Evalúa este resultado. Si tienes la información necesaria, usa 'Final Answer: [tu respuesta]'. De lo contrario, continúa usando herramientas).", resultado_creacion),
             });
             iteraciones += 1;
             continue;
@@ -359,7 +388,6 @@ async fn ejecutar_agente_autonomo(
 
         // --- INTERCEPTOR: ACTUALIZAR NOTA ---
         if respuesta_texto.contains("Action: update_note") {
-            // Asumimos que implementaste extraer_parametro_robusto (o usa tu extraer_parametro actual)
             let input_crudo = extraer_parametro(&respuesta_texto, "Action Input:");
             let _ = app.emit("agente-estado", "~ Editando archivo en la Bóveda...");
 
@@ -374,8 +402,8 @@ async fn ejecutar_agente_autonomo(
                 content: respuesta_texto.clone(),
             });
             contexto_actual.push(MensajeChat {
-                role: "system".into(),
-                content: format!("Observation: {}", resultado_edicion),
+                role: "user".into(),
+                content: format!("Observation: {}\n(Acción completada. Evalúa este resultado. Si tienes la información necesaria, usa 'Final Answer: [tu respuesta]'. De lo contrario, continúa usando herramientas).", resultado_edicion),
             });
             iteraciones += 1;
             continue;
@@ -396,8 +424,8 @@ async fn ejecutar_agente_autonomo(
                 content: respuesta_texto.clone(),
             });
             contexto_actual.push(MensajeChat {
-                role: "system".into(),
-                content: format!("Observation: {}", resultado_web),
+                role: "user".into(),
+                content: format!("Observation: {}\n(Acción completada. Evalúa este resultado. Si tienes la información necesaria, usa 'Final Answer: [tu respuesta]'. De lo contrario, continúa usando herramientas).", resultado_web),
             });
             iteraciones += 1;
             continue;
@@ -406,12 +434,14 @@ async fn ejecutar_agente_autonomo(
         if respuesta_texto.contains("Action: read_emails") {
             let _ = app.emit("agente-estado", "~ Revisando bandeja de entrada...");
             
-            // Llamada directa sin parámetros
             let res = leer_correos_recientes().await;
             let obs = match res { Ok(m) => m, Err(e) => format!("Error IMAP: {}", e) };
             
             contexto_actual.push(MensajeChat { role: "assistant".into(), content: respuesta_texto.clone() });
-            contexto_actual.push(MensajeChat { role: "system".into(), content: format!("Observation: {}", obs) });
+            contexto_actual.push(MensajeChat { 
+                role: "user".into(), 
+                content: format!("Observation: {}\n(Acción completada. Evalúa este resultado. Si tienes la información necesaria, usa 'Final Answer: [tu respuesta]'. De lo contrario, continúa usando herramientas).", obs) 
+            });
             iteraciones += 1; 
             continue;
         }
@@ -467,12 +497,16 @@ async fn ejecutar_agente_autonomo(
             return Ok(respuesta_hibrida);
         }
 
-        println!("💡 DEDUCCIÓN: El modelo omitió el formato estricto. Enviando texto en crudo a Vue.");
+        if !respuesta_texto.contains("Action:") {
+            println!("💡 DEDUCCIÓN: Charla casual detectada sin formato. Aceptando texto en crudo.");
+            return Ok(respuesta_texto.trim().to_string());
+        }
+
+        println!("⚠️ ADVERTENCIA: El formato del agente colapsó. Rescatando el log.");
         
         let respuesta_rescatada = format!(
-            "<details style=\"padding: 10px; background: var(--bg-header); border: 1px solid var(--border-color); border-radius: 6px; margin-bottom: 15px;\">\n<summary style=\"cursor: pointer; color: #f7768e; font-weight: bold;\">⚠️ Formato roto (Rescate de log)</summary>\n<pre style=\"margin-top: 10px; font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--text-muted); white-space: pre-wrap; overflow-x: auto; background: rgba(0,0,0,0.2); padding: 10px; border-radius: 4px;\">\n{}\n</pre>\n</details>\n\n{}", 
-            log_agente.trim(), 
-            respuesta_texto.trim()
+            "<details style=\"padding: 10px; background: var(--bg-header); border: 1px solid var(--border-color); border-radius: 6px; margin-bottom: 15px;\">\n<summary style=\"cursor: pointer; color: #f7768e; font-weight: bold;\">⚠️ Formato roto (Rescate de log)</summary>\n<pre style=\"margin-top: 10px; font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--text-muted); white-space: pre-wrap; overflow-x: auto; background: rgba(0,0,0,0.2); padding: 10px; border-radius: 4px;\">\n{}\n</pre>\n</details>\n\n*El agente tuvo problemas procesando la última acción. Revisa el log superior.*", 
+            log_agente.trim()
         );
         return Ok(respuesta_rescatada);
     }

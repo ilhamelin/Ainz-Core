@@ -6,8 +6,7 @@ import { check, type Update } from '@tauri-apps/plugin-updater';
 import { relaunch } from '@tauri-apps/plugin-process';
 
 import { open } from '@tauri-apps/plugin-dialog';
-import { readDir, readTextFile, writeTextFile, type DirEntry } from '@tauri-apps/plugin-fs';
-import { join } from '@tauri-apps/api/path';
+import { readDir, type DirEntry } from '@tauri-apps/plugin-fs';
 
 
 import { getVersion } from '@tauri-apps/api/app';
@@ -27,6 +26,36 @@ export function useAppLogic() {
     unlistenAgente = await listen('agente-estado', (event: Event<string>) => {
       estadoAgente.value = event.payload;
     });
+
+    await listen('tokens-metricas', (event: any) => {
+      console.log("📡 Métricas recibidas desde Rust:", event.payload); // PRUEBA DE VIDA
+
+      // Si el objeto está vacío/null, lo construimos a la fuerza
+      if (!metricasActuales.value) {
+        metricasActuales.value = {
+          promptTokens: 0, responseTokens: 0, totalTokens: 0,
+          velocidad: "0.00", tiempoTotal: "0.00",
+          promptAcumulados: 0, responseAcumulados: 0, totalAcumulados: 0
+        };
+      }
+
+      const payload = event.payload;
+
+      // 1. Acumulamos la iteración actual
+      metricasActuales.value.promptTokens += payload.prompt_tokens;
+      metricasActuales.value.responseTokens += payload.eval_tokens;
+      metricasActuales.value.totalTokens += (payload.prompt_tokens + payload.eval_tokens);
+
+      // 2. Sobrescribimos velocidad y tiempo
+      metricasActuales.value.velocidad = payload.velocidad;
+      metricasActuales.value.tiempoTotal = payload.tiempo_total;
+
+      // 3. Sumamos al historial del chat
+      metricasActuales.value.promptAcumulados += payload.prompt_tokens;
+      metricasActuales.value.responseAcumulados += payload.eval_tokens;
+      metricasActuales.value.totalAcumulados += (payload.prompt_tokens + payload.eval_tokens);
+    });
+
   });
 
   onUnmounted(() => {
@@ -35,7 +64,29 @@ export function useAppLogic() {
 
   const enviarMensaje = async () => {
     const texto = inputUsuario.value.trim();
-    if (!texto) return;
+    if (!texto || estaPensando.value) return;
+
+    if (!metricasActuales.value) {
+      metricasActuales.value = {
+        promptTokens: 0, responseTokens: 0, totalTokens: 0,
+        velocidad: "0.00", tiempoTotal: "0.00",
+        promptAcumulados: 0, responseAcumulados: 0, totalAcumulados: 0
+      };
+    } else {
+      metricasActuales.value.promptTokens = 0;
+      metricasActuales.value.responseTokens = 0;
+      metricasActuales.value.totalTokens = 0;
+      metricasActuales.value.velocidad = "0.00";
+      metricasActuales.value.tiempoTotal = "0.00";
+    }
+
+    const chatActual = listaChats.value.find(c => c.id === idChatActivo.value);
+    if (chatActual) {
+
+      if (!chatActual.titulo || chatActual.titulo === 'Nuevo Chat') {
+        chatActual.titulo = texto.length > 25 ? texto.substring(0, 25) + '...' : texto;
+      }
+    }
 
     inputUsuario.value = '';
     if (textareaRef.value) textareaRef.value.style.height = 'auto';
@@ -749,7 +800,9 @@ export function useAppLogic() {
 
   const textareaRef = ref<HTMLTextAreaElement | null>(null);
 
-  const ajustarAltura = () => {
+  const ajustarAltura = async () => {
+    await nextTick();
+
     const el = textareaRef.value;
     if (!el) return;
     el.style.height = 'auto';
@@ -867,38 +920,7 @@ export function useAppLogic() {
   // ==========================================
   // MOTOR DE BÚSQUEDA DEL SEGUNDO CEREBRO (RAG)
   // ==========================================
-  const buscarEnBoveda = async (query: string): Promise<string> => {
-    if (!rutaBoveda.value) return "Error: No hay una bóveda de Obsidian vinculada.";
 
-    try {
-      const entradas = await readDir(rutaBoveda.value);
-      const archivosMd = entradas.filter(e => e.isFile && e.name.endsWith('.md'));
-      let resultadosObtenidos: string[] = [];
-
-      for (const archivo of archivosMd) {
-        const rutaCompleta = await join(rutaBoveda.value, archivo.name);
-        const contenido = await readTextFile(rutaCompleta);
-
-        const coincideContenido = contenido.toLowerCase().includes(query.toLowerCase());
-        const coincideTitulo = archivo.name.toLowerCase().includes(query.toLowerCase());
-
-        if (coincideContenido || coincideTitulo) {
-          let fragmento = contenido.trim() === "" ? "[NOTA VACÍA - 0 BYTES. Lista para ser escrita.]" : contenido;
-          fragmento = fragmento.length > 1500 ? fragmento.substring(0, 1500) + "... [texto truncado]" : fragmento;
-          resultadosObtenidos.push(`--- NOTA: ${archivo.name} ---\n${fragmento}`);
-        }
-      }
-
-      if (resultadosObtenidos.length === 0) {
-        return `No se encontró información sobre "${query}" en la bóveda.`;
-      }
-
-      return resultadosObtenidos.slice(0, 4).join("\n\n");
-    } catch (error) {
-      console.error("Fallo del disco al buscar en la bóveda:", error);
-      return `Error de lectura del disco: ${error}`;
-    }
-  };
 
 
   onMounted(async () => {
@@ -944,10 +966,13 @@ export function useAppLogic() {
     permisoAccesoGlobal,
     telemetriaHardware,
     modelosRecomendados,
-  
+    textareaRef,
+    
+
 
     // Funciones
     enviarMensaje,
+    escanearHardware,
     verificarActualizaciones,
     aplicarActualizacion,
     limpiarChat,
@@ -970,12 +995,6 @@ export function useAppLogic() {
     renderizarMarkdown,
     procesarContenido,
     hacerScrollHaciaAbajo,
-    escanearHardware,
-    buscarEnBoveda,
-
-
-
-
 
     // agrega cualquier otra que uses en el template
   };
