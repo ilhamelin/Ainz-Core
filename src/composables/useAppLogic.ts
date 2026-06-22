@@ -557,6 +557,15 @@ export function useAppLogic() {
   const limpiarChat = () => {
     historial.value = [{ role: "SISTEMA", content: "La memoria del agente ha sido purgada. Nueva sesión iniciada.", color: "var(--accent-primary)" }];
     limpiarArchivoActual();
+    
+    if (metricasActuales.value) {
+        metricasActuales.value.promptTokens = 0;
+        metricasActuales.value.responseTokens = 0;
+        metricasActuales.value.totalTokens = 0;
+        metricasActuales.value.promptAcumulados = 0;
+        metricasActuales.value.responseAcumulados = 0;
+        metricasActuales.value.totalAcumulados = 0;
+    }
 
     const chatActual = listaChats.value.find(c => c.id === idChatActivo.value);
     if (chatActual) {

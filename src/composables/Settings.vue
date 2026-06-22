@@ -14,7 +14,7 @@
     <div class="settings-form-group">
       <label class="settings-label">Contraseña de Aplicación / Token</label>
       <input 
-        v-model="config.token" 
+        v-model="config.token" you
         type="password" 
         placeholder="••••••••••••••••" 
         class="settings-input"

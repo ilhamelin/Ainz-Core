@@ -6,6 +6,8 @@ use tauri::{AppHandle, Emitter};
 use sysinfo::System;
 use std::fs;
 use std::path::PathBuf;
+use std::sync::Arc;
+use tokio::sync::Semaphore;
 
 #[derive(Serialize, Deserialize)]
 pub struct MensajeChat {
@@ -24,6 +26,7 @@ pub struct MailConfig {
 // ==========================================
 // LÓGICA PRINCIPAL DEL AGENTE AUTÓNOMO
 // ==========================================
+
 #[tauri::command]
 async fn ejecutar_agente_autonomo(
     app: AppHandle,
@@ -45,54 +48,37 @@ async fn ejecutar_agente_autonomo(
         }
     }
 
-    // Inyectamos la ruta de forma segura y definimos el nuevo formato estricto
     let mut system_prompt = format!(
         "Eres Ainz-Core, un agente de sistema y Arquitecto de Conocimiento (PKM) experto.
-    REGLA DE ORO: NO eres un tutor. NO expliques cómo hacer las cosas. EJECUTA las acciones directamente.
-      
-    Solo puedes responder usando EXACTAMENTE uno de estos dos formatos:
-    
-    --- FORMATO 1: PARA USAR HERRAMIENTAS (BUCLE DE RAZONAMIENTO) ---
-    Thought: [Tu razonamiento técnico]
-    Action: [read_file | run_powershell | search_vault | create_note | list_vault]
-    Action Input: [parámetro]
-    
-    >> EJEMPLO DE USO DE HERRAMIENTA:
-    User: Elimina la carpeta temporal XYZ en C:\\
-    Thought: El usuario me pide eliminar una carpeta. Soy un agente local, así que usaré powershell con el flag Force.
-    Action: run_powershell
-    Action Input: Remove-Item -Path 'C:\\XYZ' -Force -Recurse
+        REGLA DE ORO: NO eres un tutor. NO expliques cómo hacer las cosas. EJECUTA las acciones directamente.
+        
+        Responde siempre siguiendo este formato estricto:
+        Thought: Tu razonamiento técnico y planificación.
+        Action: El nombre exacto de la herramienta (o none).
+        Action Input: Los parámetros que requiere la herramienta (o none).
+        Final Answer: Tu respuesta final detallada en Markdown (solo cuando termines).
 
-    -----------------------------------------------------------------
+        REGLAS DE FLUJO:
+        1. Para usar herramientas: Define 'Action' y 'Action Input'. Deja 'Final Answer' vacío.
+        2. Para responder al usuario: Define 'Action' como 'none' y escribe en 'Final Answer'.
 
-    --- NUEVAS CAPACIDADES ---
-    - ACCESO A INTERNET: Puedes descargar texto de cualquier URL pública o API.
-      Action: fetch_web
-      Action Input: https://ejemplo.com/api/datos
+        CATÁLOGO DE HERRAMIENTAS (Úsalas exactamente como se indica en 'Action'):
+        - read_file : (Action Input: ruta absoluta del archivo)
+        - run_powershell : (Action Input: comando exacto a ejecutar)
+        - search_vault : (Action Input: palabra o concepto a buscar en la memoria)
+        - create_note : (Action Input: NombreDeNota.md|Contenido)
+        - list_vault : (Action Input: none)
+        - fetch_web : (Action Input: URL pública a descargar)
+        - update_note : (Action Input: MiNota.md|texto exacto viejo|texto nuevo)
+        - deep_research : (Action Input: termino de busqueda 1|termino de busqueda 2)
+        - read_emails : (Action Input: imap.ejemplo.com|usuario|token)
+        - send_email : (Action Input: destinatario|Asunto|Cuerpo)
 
-    - EDICIÓN INTELIGENTE DE NOTAS: No borres una nota para modificarla. Usa update_note.
-      Action: update_note
-      Action Input: MiNota.md|texto exacto que quiero quitar|texto nuevo que voy a poner
-
-    -----------------------------------------------------------------
-    
-    --- FORMATO 2: PARA RESPONDER AL USUARIO (FIN DE TAREA) ---
-    Thought: Ya ejecuté la herramienta o tengo los datos necesarios.
-    Final Answer: [Tu respuesta detallada en Markdown]
-
-    -----------------------------------------------------------------
-
-    - GESTIÓN DE CORREOS: Puedes interactuar con la bandeja del usuario.
-    Action: read_emails
-    Action Input: imap.ejemplo.com|tu_usuario@ejemplo.com|tu_token_o_password
-
-    Action: send_email
-    Action Input: smtp.ejemplo.com|tu_usuario@ejemplo.com|tu_token|destinatario@ejemplo.com|Asunto del correo|Cuerpo del mensaje
-
-    -----------------------------------------------------------------"
-
-    
-
+        >> EJEMPLO DE USO DE HERRAMIENTA:
+        Thought: El usuario me pide eliminar la carpeta temporal XYZ. Usaré powershell.
+        Action: run_powershell
+        Action Input: Remove-Item -Path 'C:\\XYZ' -Force -Recurse
+        "   
     );
 
     if acceso_global {
@@ -431,6 +417,33 @@ async fn ejecutar_agente_autonomo(
             continue;
         }
 
+        // --- INTERCEPTOR: DEEP RESEARCH (MAP-REDUCE) ---
+        if respuesta_texto.contains("Action: deep_research") {
+            let input_crudo = extraer_parametro(&respuesta_texto, "Action Input:");
+            // Separamos las búsquedas por el pipe '|'
+            let queries: Vec<&str> = input_crudo.split('|').collect();
+            
+            let _ = app.emit(
+                "agente-estado",
+                format!("~ Iniciando investigación profunda de {} fuentes...", queries.len()),
+            );
+
+            // Delegamos el trabajo pesado a una nueva función en Rust
+            let resultado_research = ejecutar_deep_research_rust(&app, queries, modelo_detectado.clone()).await;
+
+            contexto_actual.push(MensajeChat {
+                role: "assistant".into(),
+                content: respuesta_texto.clone(),
+            });
+            // Fase "Reduce": Le entregamos todo masticado al agente principal
+            contexto_actual.push(MensajeChat {
+                role: "user".into(),
+                content: format!("Observation: {}\n(Acción completada. Usa esta síntesis para construir tu 'Final Answer' integrando todas las fuentes).", resultado_research),
+            });
+            iteraciones += 1;
+            continue;
+        }
+
         if respuesta_texto.contains("Action: read_emails") {
             let _ = app.emit("agente-estado", "~ Revisando bandeja de entrada...");
             
@@ -635,9 +648,6 @@ async fn enviar_chat_rust(
         "model": model,
         "messages": messages,
         "stream": false,
-        "options": {
-            "stop": ["Observation:"]
-        }
     });
 
     let res = client
@@ -736,7 +746,6 @@ async fn listar_boveda_rust(ruta_boveda: &str) -> String {
     let mut archivos = Vec::new();
     for entrada in entradas.flatten() {
         let path = entrada.path();
-        // Solo listamos los archivos Markdown para mantener la limpieza
         if path.is_file() && path.extension().and_then(|s| s.to_str()) == Some("md") {
             archivos.push(format!(
                 "- {}",
@@ -749,6 +758,134 @@ async fn listar_boveda_rust(ruta_boveda: &str) -> String {
         "La bóveda está vacía.".to_string()
     } else {
         format!("Contenido de la bóveda:\n{}", archivos.join("\n"))
+    }
+}
+
+async fn ejecutar_deep_research_rust(app: &tauri::AppHandle, queries: Vec<&str>, modelo: String) -> String {
+    let mut tareas = Vec::new();
+
+    let limitador_inferencia = Arc::new(Semaphore::new(3));
+
+    for query in queries {
+        let query_limpia = query.trim().to_string();
+        if query_limpia.is_empty() { continue; }
+        
+        let modelo_clon = modelo.clone();
+        let app_clon = app.clone(); 
+        let semaforo_clon = Arc::clone(&limitador_inferencia);
+        
+        let tarea = tokio::spawn(async move {
+            let _ = app_clon.emit("agente-estado", format!("~ Investigando: {}...", query_limpia));
+            
+            match llamar_api_busqueda_rust(&query_limpia).await {
+                Ok(texto_crudo) => {
+
+                    let _permiso = semaforo_clon.acquire().await.unwrap();
+                    
+                    let _ = app_clon.emit("agente-estado", format!("~ Destilando info de: {}...", query_limpia));
+                    
+                    let prompt_resumen = format!(
+                        "Eres un analista de datos. Extrae únicamente datos duros, estadísticas y hechos concretos sobre '{}' de este texto. Si no hay información relevante, responde: 'No hay datos útiles'.\n\nTexto:\n{}", 
+                        query_limpia, texto_crudo
+                    );
+
+                    let mensajes_map = vec![serde_json::json!({"role": "user", "content": prompt_resumen})];
+
+                    let resultado = match enviar_chat_rust(modelo_clon, mensajes_map).await {
+                        Ok(json) => {
+                            let resumen = json["message"]["content"].as_str().unwrap_or("[Respuesta vacía del modelo]").to_string();
+                            format!("### Fuente: {}\n{}", query_limpia, resumen)
+                        },
+                        Err(e) => format!("### Fuente: {}\n[ERROR LOCAL]: Fallo de inferencia: {}", query_limpia, e),
+                    };
+                    
+                    resultado
+                },
+                Err(error_red) => {
+                    format!("### Fuente: {}\n[ERROR DE INVESTIGACIÓN]: No se pudo acceder a la red. Razón: {}.", query_limpia, error_red)
+                }
+            }
+        });
+        
+        tareas.push(tarea);
+    }
+
+    let mut reportes_sintetizados = Vec::new();
+
+    for tarea in tareas {
+        if let Ok(resultado) = tarea.await {
+            reportes_sintetizados.push(resultado);
+        }
+    }
+
+    if reportes_sintetizados.is_empty() {
+        return "La investigación fracasó por completo. Revisa la red y el servicio local.".to_string();
+    }
+
+    format!("REPORTE DE INVESTIGACIÓN PRE-PROCESADO:\n\n{}", reportes_sintetizados.join("\n\n---\n\n"))
+}
+
+// ==========================================
+// INTEGRACIÓN DE BÚSQUEDA REAL
+// ==========================================
+async fn llamar_api_busqueda_rust(query: &str) -> Result<String, String> {
+    let api_key = "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"; 
+    
+    let cliente = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(15))
+        .build()
+        .map_err(|e| format!("Fallo interno al construir cliente HTTP: {}", e))?;
+    
+    let body = serde_json::json!({
+        "api_key": api_key,
+        "query": query,
+        "search_depth": "advanced",
+        "include_answer": false,
+        "include_raw_content": true,
+        "max_results": 2
+    });
+
+    let res = cliente.post("https://api.tavily.com/search")
+        .header("Content-Type", "application/json")
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| {
+            if e.is_timeout() {
+                "Timeout: El servidor de búsqueda tardó demasiado en responder.".to_string()
+            } else {
+                format!("Error de red o DNS: {}", e)
+            }
+        })?;
+
+    if !res.status().is_success() {
+        return Err(format!("La API rechazó la petición (Código HTTP: {})", res.status()));
+    }
+
+    // 3. Parseo seguro
+    match res.json::<serde_json::Value>().await {
+        Ok(json) => {
+            let mut texto_compilado = String::new();
+            if let Some(resultados) = json["results"].as_array() {
+                for resultado in resultados {
+                    let contenido = resultado["raw_content"].as_str().unwrap_or("");
+                    texto_compilado.push_str(contenido);
+                    texto_compilado.push_str("\n\n");
+                }
+            }
+            
+            if texto_compilado.trim().is_empty() {
+                return Err("La búsqueda se realizó con éxito, pero no se encontró contenido textual.".to_string());
+            }
+
+            // Cortafuegos de VRAM
+            if texto_compilado.len() > 10000 {
+                Ok(texto_compilado[..10000].to_string())
+            } else {
+                Ok(texto_compilado)
+            }
+        },
+        Err(e) => Err(format!("Fallo al parsear JSON del buscador: {}", e)),
     }
 }
 
